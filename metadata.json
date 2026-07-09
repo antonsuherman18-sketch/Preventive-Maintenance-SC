@@ -1,0 +1,6 @@
+{
+  "name": "Centrifuge PM",
+  "description": "Preventive maintenance monitoring application for sludge centrifuge at PT YWA Mill, Berau, with offline/online synchronization.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
