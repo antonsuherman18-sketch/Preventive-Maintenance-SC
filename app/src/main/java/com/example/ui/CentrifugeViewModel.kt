@@ -28,6 +28,9 @@ class CentrifugeViewModel(application: Application, private val repository: Repo
     val vibrationLogs: StateFlow<List<VibrationLog>> = repository.vibrationHistory
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
+    val flushingLogs: StateFlow<List<FlushingLog>> = repository.allFlushingLogs
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
     val isOnline: StateFlow<Boolean> = repository.isOnline
     val syncStatus: StateFlow<String> = repository.syncStatus
 
@@ -83,6 +86,18 @@ class CentrifugeViewModel(application: Application, private val repository: Repo
     fun addVibrationLog(log: VibrationLog) {
         viewModelScope.launch {
             repository.insertVibrationLog(log)
+        }
+    }
+
+    fun addFlushingLog(log: FlushingLog) {
+        viewModelScope.launch {
+            repository.insertFlushingLog(log)
+        }
+    }
+
+    fun deleteFlushingLog(log: FlushingLog) {
+        viewModelScope.launch {
+            repository.deleteFlushingLog(log)
         }
     }
 }

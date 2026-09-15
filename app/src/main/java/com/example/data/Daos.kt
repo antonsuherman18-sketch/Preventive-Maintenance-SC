@@ -95,3 +95,24 @@ interface VibrationDao {
     @Query("UPDATE vibration_logs SET isSynced = 1")
     suspend fun markAllSynced()
 }
+
+@Dao
+interface FlushingDao {
+    @Query("SELECT * FROM flushing_logs ORDER BY timestamp DESC")
+    fun getAllLogs(): Flow<List<FlushingLog>>
+
+    @Query("SELECT * FROM flushing_logs WHERE isSynced = 0")
+    suspend fun getUnsyncedLogs(): List<FlushingLog>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertLog(log: FlushingLog): Long
+
+    @Delete
+    suspend fun deleteLog(log: FlushingLog)
+
+    @Query("UPDATE flushing_logs SET isSynced = 1 WHERE id = :id")
+    suspend fun markSynced(id: Long)
+
+    @Query("UPDATE flushing_logs SET isSynced = 1")
+    suspend fun markAllSynced()
+}

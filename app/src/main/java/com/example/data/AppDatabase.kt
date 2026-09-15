@@ -11,9 +11,10 @@ import androidx.room.RoomDatabase
         ReliabilityPmCheck::class,
         AbnormalityReport::class,
         MentorPairingLog::class,
-        VibrationLog::class
+        VibrationLog::class,
+        FlushingLog::class
     ],
-    version = 1,
+    version = 5,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -22,6 +23,7 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun abnormalityDao(): AbnormalityDao
     abstract fun mentorPairingDao(): MentorPairingDao
     abstract fun vibrationDao(): VibrationDao
+    abstract fun flushingDao(): FlushingDao
 
     companion object {
         @Volatile

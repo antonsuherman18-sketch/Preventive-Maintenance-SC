@@ -14,6 +14,7 @@ class Repository(private val db: AppDatabase) {
     val abnormalityDao = db.abnormalityDao()
     val mentorPairingDao = db.mentorPairingDao()
     val vibrationDao = db.vibrationDao()
+    val flushingDao = db.flushingDao()
 
     // Flow definitions for UI observation
     val allCiltChecks: Flow<List<CiltCheck>> = ciltDao.getAllChecks()
@@ -21,12 +22,13 @@ class Repository(private val db: AppDatabase) {
     val allAbnormalityReports: Flow<List<AbnormalityReport>> = abnormalityDao.getAllReports()
     val allMentorPairingLogs: Flow<List<MentorPairingLog>> = mentorPairingDao.getAllLogs()
     val vibrationHistory: Flow<List<VibrationLog>> = vibrationDao.getVibrationHistory()
+    val allFlushingLogs: Flow<List<FlushingLog>> = flushingDao.getAllLogs()
 
     // Offline / Online Sync State Management
     private val _isOnline = MutableStateFlow(false) // default offline as Berau mill is remote
     val isOnline: StateFlow<Boolean> = _isOnline
 
-    private val _syncStatus = MutableStateFlow("PKS Berau (Offline Mode) - Data disimpan di database lokal")
+    private val _syncStatus = MutableStateFlow("(Offline Mode) - Data disimpan di database lokal")
     val syncStatus: StateFlow<String> = _syncStatus
 
     fun setOnlineMode(online: Boolean) {
@@ -34,7 +36,7 @@ class Repository(private val db: AppDatabase) {
         if (online) {
             _syncStatus.value = "Terhubung dengan Jakarta HQ (Online Mode)"
         } else {
-            _syncStatus.value = "PKS Berau (Offline Mode) - Data disimpan di database lokal"
+            _syncStatus.value = "(Offline Mode) - Data disimpan di database lokal"
         }
     }
 
@@ -54,6 +56,7 @@ class Repository(private val db: AppDatabase) {
             abnormalityDao.markAllSynced()
             mentorPairingDao.markAllSynced()
             vibrationDao.markAllSynced()
+            flushingDao.markAllSynced()
 
             _syncStatus.value = "Sinkronisasi Berhasil! Seluruh data mill Berau telah terupdate di Server Jakarta."
             return true
@@ -105,6 +108,17 @@ class Repository(private val db: AppDatabase) {
         }
     }
 
+    suspend fun insertFlushingLog(log: FlushingLog) {
+        val insertedId = flushingDao.insertLog(log)
+        if (_isOnline.value) {
+            flushingDao.markSynced(insertedId)
+        }
+    }
+
+    suspend fun deleteFlushingLog(log: FlushingLog) {
+        flushingDao.deleteLog(log)
+    }
+
     // Pre-populate realistic data if empty
     suspend fun prePopulateIfEmpty() {
         val currentVibList = vibrationHistory.first()
@@ -129,8 +143,8 @@ class Repository(private val db: AppDatabase) {
                         timestamp = timestamp,
                         driveEndVibration = devVib,
                         nonDriveEndVibration = ndevVib,
-                        motorVibration = 3.5f,
-                        gearBoxVibration = 4.0f,
+                        motorBearingVibration = 3.5f,
+                        gearboxBearingVibration = 4.0f,
                         bearingTemp = bearingTemp,
                         motorTemp = 55f,
                         alarmState = alarm,
@@ -152,8 +166,8 @@ class Repository(private val db: AppDatabase) {
                         timestamp = timestamp,
                         driveEndVibration = devVib,
                         nonDriveEndVibration = ndevVib,
-                        motorVibration = 1.8f,
-                        gearBoxVibration = 2.1f,
+                        motorBearingVibration = 1.8f,
+                        gearboxBearingVibration = 2.1f,
                         bearingTemp = bearingTemp,
                         motorTemp = 48f,
                         alarmState = "Normal",
@@ -238,11 +252,11 @@ class Repository(private val db: AppDatabase) {
                 )
             )
 
-            // 4. Pre-populate initial CILT & Reliability checks
-            ciltDao.insertCheck(
+            // 4. Pre-populate initial CILT checks (Daily, Weekly, Monthly data for Wahyu & Abdul Aziz)
+            val ciltSeedList = listOf(
                 CiltCheck(
-                    timestamp = now - 2 * dayMs,
-                    operatorName = "Ari (Operator)",
+                    timestamp = now - 2 * 3600 * 1000L, // Today 2 hours ago
+                    operatorName = "Wahyu",
                     nozzleCleaned = true,
                     bowlCleaned = true,
                     areaCleaned = true,
@@ -256,10 +270,163 @@ class Repository(private val db: AppDatabase) {
                     nozzleBoltsTightened = true,
                     fittingPipesTightened = true,
                     beltTensionChecked = true,
-                    comments = "Checklist lengkap CILT shift pagi. Mesin stabil.",
+                    comments = "[Pagi] Checklist CILT lengkap, putaran bowl halus & getaran stabil 2.8 mm/s.",
+                    isSynced = true
+                ),
+                CiltCheck(
+                    timestamp = now - 10 * 3600 * 1000L, // Today 10 hours ago
+                    operatorName = "Abdul Aziz",
+                    nozzleCleaned = true,
+                    bowlCleaned = true,
+                    areaCleaned = true,
+                    nozzleChecked = true,
+                    vibrationChecked = true,
+                    leakChecked = true,
+                    instrumentChecked = true,
+                    bearingGreased = true,
+                    couplingGreased = false,
+                    oilLevelChecked = true,
+                    nozzleBoltsTightened = true,
+                    fittingPipesTightened = true,
+                    beltTensionChecked = true,
+                    comments = "[Malam] Pelumasan bearing buffer selesai. Greasing coupling dijadwalkan shift berikutnya.",
+                    isSynced = true
+                ),
+                CiltCheck(
+                    timestamp = now - 1 * dayMs - 3 * 3600 * 1000L, // Yesterday
+                    operatorName = "Abdul Aziz",
+                    nozzleCleaned = true,
+                    bowlCleaned = true,
+                    areaCleaned = true,
+                    nozzleChecked = true,
+                    vibrationChecked = true,
+                    leakChecked = true,
+                    instrumentChecked = true,
+                    bearingGreased = true,
+                    couplingGreased = true,
+                    oilLevelChecked = true,
+                    nozzleBoltsTightened = true,
+                    fittingPipesTightened = true,
+                    beltTensionChecked = true,
+                    comments = "[Pagi] Pembersihan nozzle & bowl tuntas bebas kerak sludge. Suhu bearing 58°C.",
+                    isSynced = true
+                ),
+                CiltCheck(
+                    timestamp = now - 2 * dayMs, // 2 days ago
+                    operatorName = "Wahyu",
+                    nozzleCleaned = true,
+                    bowlCleaned = true,
+                    areaCleaned = true,
+                    nozzleChecked = true,
+                    vibrationChecked = true,
+                    leakChecked = true,
+                    instrumentChecked = true,
+                    bearingGreased = true,
+                    couplingGreased = true,
+                    oilLevelChecked = true,
+                    nozzleBoltsTightened = true,
+                    fittingPipesTightened = true,
+                    beltTensionChecked = true,
+                    comments = "[Pagi] Seluruh 13 item checklist terverifikasi lengkap. Level oli coupling aman.",
+                    isSynced = true
+                ),
+                CiltCheck(
+                    timestamp = now - 4 * dayMs, // 4 days ago
+                    operatorName = "Wahyu",
+                    nozzleCleaned = true,
+                    bowlCleaned = true,
+                    areaCleaned = true,
+                    nozzleChecked = true,
+                    vibrationChecked = true,
+                    leakChecked = true,
+                    instrumentChecked = true,
+                    bearingGreased = true,
+                    couplingGreased = true,
+                    oilLevelChecked = true,
+                    nozzleBoltsTightened = true,
+                    fittingPipesTightened = false,
+                    beltTensionChecked = true,
+                    comments = "[Malam] Baut fitting sambungan pipa agak kendor, sudah dikencangkan ulang.",
+                    isSynced = true
+                ),
+                CiltCheck(
+                    timestamp = now - 6 * dayMs, // 6 days ago
+                    operatorName = "Abdul Aziz",
+                    nozzleCleaned = true,
+                    bowlCleaned = true,
+                    areaCleaned = true,
+                    nozzleChecked = true,
+                    vibrationChecked = true,
+                    leakChecked = true,
+                    instrumentChecked = true,
+                    bearingGreased = true,
+                    couplingGreased = true,
+                    oilLevelChecked = true,
+                    nozzleBoltsTightened = true,
+                    fittingPipesTightened = true,
+                    beltTensionChecked = true,
+                    comments = "[Pagi] Pemeriksaan harian selesai. Kondisi visual nozzle baik.",
+                    isSynced = true
+                ),
+                CiltCheck(
+                    timestamp = now - 11 * dayMs, // 11 days ago
+                    operatorName = "Wahyu",
+                    nozzleCleaned = true,
+                    bowlCleaned = true,
+                    areaCleaned = true,
+                    nozzleChecked = true,
+                    vibrationChecked = true,
+                    leakChecked = true,
+                    instrumentChecked = true,
+                    bearingGreased = true,
+                    couplingGreased = true,
+                    oilLevelChecked = true,
+                    nozzleBoltsTightened = true,
+                    fittingPipesTightened = true,
+                    beltTensionChecked = true,
+                    comments = "[Pagi] Rutin CILT awal minggu kedua. Transmisi dan belt tension normal.",
+                    isSynced = true
+                ),
+                CiltCheck(
+                    timestamp = now - 16 * dayMs, // 16 days ago
+                    operatorName = "Abdul Aziz",
+                    nozzleCleaned = true,
+                    bowlCleaned = true,
+                    areaCleaned = true,
+                    nozzleChecked = true,
+                    vibrationChecked = true,
+                    leakChecked = true,
+                    instrumentChecked = true,
+                    bearingGreased = true,
+                    couplingGreased = true,
+                    oilLevelChecked = true,
+                    nozzleBoltsTightened = true,
+                    fittingPipesTightened = true,
+                    beltTensionChecked = true,
+                    comments = "[Malam] CILT shift malam tuntas 100%.",
+                    isSynced = true
+                ),
+                CiltCheck(
+                    timestamp = now - 23 * dayMs, // 23 days ago
+                    operatorName = "Wahyu",
+                    nozzleCleaned = true,
+                    bowlCleaned = true,
+                    areaCleaned = true,
+                    nozzleChecked = true,
+                    vibrationChecked = true,
+                    leakChecked = true,
+                    instrumentChecked = true,
+                    bearingGreased = true,
+                    couplingGreased = true,
+                    oilLevelChecked = true,
+                    nozzleBoltsTightened = true,
+                    fittingPipesTightened = true,
+                    beltTensionChecked = true,
+                    comments = "[Pagi] Checklist CILT bulanan terlaksana sesuai SOP.",
                     isSynced = true
                 )
             )
+            ciltSeedList.forEach { ciltDao.insertCheck(it) }
 
             reliabilityPmDao.insertCheck(
                 ReliabilityPmCheck(
@@ -273,6 +440,53 @@ class Repository(private val db: AppDatabase) {
                     bearingTempCelsius = 58f,
                     unusualNoiseDetected = false,
                     comments = "Flushing berjalan tertib setiap 2 jam memakai air panas 94C. Hasil aman.",
+                    isSynced = true
+                )
+            )
+
+            // 5. Pre-populate Flushing Logs
+            val tasksPagi1 = defaultFlushingTasks("08:00")
+            val tasksMalam1 = defaultFlushingTasks("20:00")
+            val tasksPagi2 = defaultFlushingTasks("10:00")
+
+            flushingDao.insertLog(
+                FlushingLog(
+                    timestamp = now - 4 * 60 * 60 * 1000L,
+                    operatorName = "Wahyu",
+                    shift = "Shift Pagi",
+                    unitName = "SC-01",
+                    itemsJson = flushingTasksToJson(tasksPagi1),
+                    completedCount = 11,
+                    totalCount = 11,
+                    notes = "Flushing rutin shift pagi selesai 100%, getaran normal dan air outlet bersih.",
+                    isSynced = true
+                )
+            )
+
+            flushingDao.insertLog(
+                FlushingLog(
+                    timestamp = now - 14 * 60 * 60 * 1000L,
+                    operatorName = "Abdul Aziz",
+                    shift = "Shift Malam",
+                    unitName = "SC-02",
+                    itemsJson = flushingTasksToJson(tasksMalam1),
+                    completedCount = 11,
+                    totalCount = 11,
+                    notes = "Flushing shift malam lancar, nozzle terpasang baik dan tidak ada kebocoran.",
+                    isSynced = true
+                )
+            )
+
+            flushingDao.insertLog(
+                FlushingLog(
+                    timestamp = now - 1 * dayMs - 2 * 60 * 60 * 1000L,
+                    operatorName = "Wahyu",
+                    shift = "Shift Pagi",
+                    unitName = "SC-03",
+                    itemsJson = flushingTasksToJson(tasksPagi2),
+                    completedCount = 11,
+                    totalCount = 11,
+                    notes = "Pelaksanaan flushing air panas sesuai prosedur, getaran stabil < 4.5 mm/s.",
                     isSynced = true
                 )
             )

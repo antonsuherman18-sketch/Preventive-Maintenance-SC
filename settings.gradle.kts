@@ -22,6 +22,6 @@ dependencyResolutionManagement {
   }
 }
 
-rootProject.name = "Centrifuge PM"
+rootProject.name = "Sludge Centrifuge PM"
 
 include(":app")
