@@ -5,6 +5,7 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -30,6 +31,7 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.window.Dialog
 import com.example.data.*
+import com.example.util.WibDateUtils
 import java.text.SimpleDateFormat
 import java.util.*
 
@@ -193,6 +195,10 @@ fun JakartaScreen(
     val context = LocalContext.current
     var selectedFilterTab by remember { mutableStateOf("Semua") }
 
+    // State Dialog Tarik Data Excel dengan Rentang Tanggal
+    var showExcelExportDialog by remember { mutableStateOf(false) }
+    var exportReportType by remember { mutableStateOf("all") }
+
     val totalUnsynced = ciltChecks.count { !it.isSynced } +
             reliabilityChecks.count { !it.isSynced } +
             reports.count { !it.isSynced } +
@@ -200,48 +206,54 @@ fun JakartaScreen(
             vibrationLogs.count { !it.isSynced } +
             flushingLogs.count { !it.isSynced }
 
-    // Time helper for today 00:00:00 and today 17:00:00
-    val now = Calendar.getInstance()
-    val calToday = Calendar.getInstance().apply {
-        set(Calendar.HOUR_OF_DAY, 0)
-        set(Calendar.MINUTE, 0)
-        set(Calendar.SECOND, 0)
-        set(Calendar.MILLISECOND, 0)
-    }
-    val startOfToday = calToday.timeInMillis
-    val endOfToday = startOfToday + 24 * 60 * 60 * 1000L
+    // Time helper for Report Center operational cycle (from 07:00 WIB to current check time)
+    val now = WibDateUtils.getCalendar()
+    val nowMillis = now.timeInMillis
+    val currentHour = now.get(Calendar.HOUR_OF_DAY)
+    val currentHourMinute = WibDateUtils.format("HH:mm", Date()) + " WIB"
 
-    val cal17 = Calendar.getInstance().apply {
-        set(Calendar.HOUR_OF_DAY, 17)
+    // Operational cycle starts at 07:00 WIB:
+    // If currently >= 07:00 WIB, cycle started today at 07:00 WIB.
+    // If currently < 07:00 WIB, cycle started yesterday at 07:00 WIB and renews today at 07:00 WIB.
+    val cycleStartCal = WibDateUtils.getCalendar().apply {
+        if (currentHour < 7) {
+            add(Calendar.DAY_OF_YEAR, -1)
+        }
+        set(Calendar.HOUR_OF_DAY, 7)
         set(Calendar.MINUTE, 0)
         set(Calendar.SECOND, 0)
         set(Calendar.MILLISECOND, 0)
     }
-    val isPast17 = now.timeInMillis >= cal17.timeInMillis
-    val currentHourMinute = SimpleDateFormat("HH:mm", Locale("id", "ID")).format(Date())
+    val cycleStartTime = cycleStartCal.timeInMillis
+    val checkTimeMillis = nowMillis
+
+    // Time window display string, e.g. "07:00 s/d 16:54 WIB"
+    val checkRangeString = "07:00 s/d $currentHourMinute"
+    val nextRenewalText = if (currentHour < 7) "hari ini pukul 07:00 WIB" else "besok pukul 07:00 WIB"
 
     // Unit list SC-01 to SC-08
     val units = listOf("SC-01", "SC-02", "SC-03", "SC-04", "SC-05", "SC-06", "SC-07", "SC-08")
 
     // 1. MONITORING & TREND ANALYSIS CALCULATIONS
-    val todayVibLogs = vibrationLogs.filter { it.timestamp in startOfToday..endOfToday }
+    // Filter vibration logs within the active cycle window: from 07:00 up to current check time
+    val cycleVibLogs = vibrationLogs.filter { it.timestamp in cycleStartTime..checkTimeMillis }
 
-    // Check which SC units have input today
+    // Check which SC units have input from 07:00 to current check time
     val unitsWithVibToday = units.associateWith { unitId ->
-        todayVibLogs.filter { log ->
+        cycleVibLogs.filter { log ->
             log.comments.contains(unitId, ignoreCase = true) ||
             log.comments.contains(unitId.replace("-", " "), ignoreCase = true) ||
             (unitId == "SC-01" && !units.any { other -> other != "SC-01" && (log.comments.contains(other) || log.comments.contains(other.replace("-", " "))) })
         }
     }
 
-    // Units missing input up to 17:00
+    // Units missing input from 07:00 to current check time
     val unitsMissingVibInput = units.filter { unitId ->
         unitsWithVibToday[unitId].isNullOrEmpty()
     }
 
-    // Overdue input findings (if past 17:00)
-    val overdueVibInputCount = if (isPast17) unitsMissingVibInput.size else 0
+    // Missing input findings from 07:00 to current check time
+    val missingVibInputCount = unitsMissingVibInput.size
 
     // Units with critical vibration or temperature, ungreased, leak, abnormal sound
     data class VibAlert(
@@ -288,8 +300,8 @@ fun JakartaScreen(
         }
     }
 
-    // 2. CILT CALCULATIONS
-    val todayCiltChecks = ciltChecks.filter { it.timestamp in startOfToday..endOfToday }
+    // 2. CILT CALCULATIONS (From 07:00 to current check time)
+    val todayCiltChecks = ciltChecks.filter { it.timestamp in cycleStartTime..checkTimeMillis }
     val isCiltNotDoneToday = todayCiltChecks.isEmpty()
 
     data class CiltDefect(
@@ -322,18 +334,18 @@ fun JakartaScreen(
 
     // 3. RELIABILITY PM CALCULATIONS (Real-time Abnormality Findings)
     val recentAbnormalityFindings = reports.sortedByDescending { it.timestamp }
-    val todayAbnormalityCount = reports.count { it.timestamp in startOfToday..endOfToday }
+    val todayAbnormalityCount = reports.count { it.timestamp in cycleStartTime..checkTimeMillis }
 
-    // 4. FLUSHING CALCULATIONS
-    val todayFlushingLogs = flushingLogs.filter { it.timestamp in startOfToday..endOfToday }
+    // 4. FLUSHING CALCULATIONS (From 07:00 to current check time)
+    val todayFlushingLogs = flushingLogs.filter { it.timestamp in cycleStartTime..checkTimeMillis }
     val isFlushingNotDoneToday = todayFlushingLogs.isEmpty()
     val incompleteFlushingLogs = todayFlushingLogs.filter { it.completedCount < it.totalCount }
 
-    val yesterdayStart = startOfToday - 24 * 60 * 60 * 1000L
-    val yesterdayFlushingLogs = flushingLogs.filter { it.timestamp in yesterdayStart until startOfToday }
+    val previousCycleStart = cycleStartTime - 24 * 60 * 60 * 1000L
+    val yesterdayFlushingLogs = flushingLogs.filter { it.timestamp in previousCycleStart until cycleStartTime }
 
     // Synchronized total findings per category
-    val totalMonitoringAlerts = vibAlerts.size + overdueVibInputCount
+    val totalMonitoringAlerts = vibAlerts.size + missingVibInputCount
     val totalCiltAlerts = if (isCiltNotDoneToday) 1 else ciltFindings.size
     val totalPmAlerts = recentAbnormalityFindings.size
     val totalFlushingAlerts = if (isFlushingNotDoneToday) 1 else incompleteFlushingLogs.size
@@ -406,12 +418,12 @@ fun JakartaScreen(
 
                     Spacer(modifier = Modifier.height(14.dp))
 
-                    // Status Cut-Off 17:00 Banner
+                    // Status Cut-Off Data Banner (07:00 s/d Saat Pengecekan)
                     Surface(
                         modifier = Modifier.fillMaxWidth(),
                         color = Color.Black.copy(alpha = 0.25f),
                         shape = RoundedCornerShape(10.dp),
-                        border = BorderStroke(1.dp, if (isPast17) Color(0xFFEF5350) else Color(0xFF81C784))
+                        border = BorderStroke(1.dp, if (unitsMissingVibInput.isNotEmpty()) Color(0xFFFFB74D) else Color(0xFF81C784))
                     ) {
                         Row(
                             modifier = Modifier.padding(12.dp),
@@ -423,21 +435,24 @@ fun JakartaScreen(
                                 modifier = Modifier.weight(1f)
                             ) {
                                 Icon(
-                                    imageVector = if (isPast17) Icons.Default.AlarmOn else Icons.Default.Timelapse,
+                                    imageVector = if (unitsMissingVibInput.isNotEmpty()) Icons.Default.Schedule else Icons.Default.CheckCircle,
                                     contentDescription = null,
-                                    tint = if (isPast17) Color(0xFFFF8A80) else Color(0xFFA5D6A7),
+                                    tint = if (unitsMissingVibInput.isNotEmpty()) Color(0xFFFFCC80) else Color(0xFFA5D6A7),
                                     modifier = Modifier.size(20.dp)
                                 )
                                 Spacer(modifier = Modifier.width(10.dp))
                                 Column {
                                     Text(
-                                        text = if (isPast17) "Batas Cut-Off Jam 17:00 Telah Lewat" else "Menuju Cut-Off Evaluasi Pukul 17:00 Sore",
+                                        text = "Cut-Off Data: $checkRangeString",
                                         fontWeight = FontWeight.Bold,
                                         fontSize = 12.sp,
                                         color = Color.White
                                     )
                                     Text(
-                                        text = if (isPast17) "Semua parameter yang belum diinput otomatis tercatat sebagai overdue" else "Pengecekan input real-time tetap aktif dan dipantau",
+                                        text = if (unitsMissingVibInput.isNotEmpty())
+                                            "Menampilkan data dari jam 07:00 sampai saat pengecekan ($currentHourMinute) • ${unitsMissingVibInput.size} mesin belum input • Diperbarui lagi $nextRenewalText"
+                                        else
+                                            "Semua mesin lengkap diinput (07:00 s/d $currentHourMinute) • Diperbarui lagi $nextRenewalText",
                                         fontSize = 10.sp,
                                         color = Color.LightGray
                                     )
@@ -549,6 +564,93 @@ fun JakartaScreen(
             }
         }
 
+        // TARIK DATA EXCEL BUTTON & BANNER
+        item {
+            Card(
+                colors = CardDefaults.cardColors(containerColor = Color.White),
+                shape = RoundedCornerShape(12.dp),
+                border = BorderStroke(1.dp, Color(0xFFE0E0E0)),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 14.dp, vertical = 10.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Row(
+                        modifier = Modifier.weight(1f),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Surface(
+                            shape = CircleShape,
+                            color = Color.White,
+                            border = BorderStroke(1.dp, Color(0xFFE0E0E0)),
+                            modifier = Modifier.size(36.dp)
+                        ) {
+                            Box(contentAlignment = Alignment.Center) {
+                                Icon(
+                                    imageVector = Icons.Default.FileDownload,
+                                    contentDescription = "Tarik Data Excel",
+                                    tint = Color.Black,
+                                    modifier = Modifier.size(20.dp)
+                                )
+                            }
+                        }
+                        Spacer(modifier = Modifier.width(10.dp))
+                        Column {
+                            Text(
+                                text = "Tarik Data Laporan Excel",
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = Color.Black
+                            )
+                            Text(
+                                text = "Tentukan data ditarik dari kapan sampai kapan",
+                                fontSize = 10.sp,
+                                color = Color.DarkGray
+                            )
+                        }
+                    }
+
+                    OutlinedButton(
+                        onClick = {
+                            exportReportType = when (selectedFilterTab) {
+                                "1. Monitoring SC" -> "monitoring"
+                                "2. CILT" -> "cilt"
+                                "3. Reliability PM" -> "reliability"
+                                "4. Flushing" -> "flushing"
+                                else -> "all"
+                            }
+                            showExcelExportDialog = true
+                        },
+                        colors = ButtonDefaults.outlinedButtonColors(
+                            containerColor = Color.White,
+                            contentColor = Color.Black
+                        ),
+                        border = BorderStroke(1.2.dp, Color.Black),
+                        shape = RoundedCornerShape(8.dp),
+                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.DateRange,
+                            contentDescription = null,
+                            tint = Color.Black,
+                            modifier = Modifier.size(16.dp)
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text(
+                            text = "Tarik Data",
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Color.Black
+                        )
+                    }
+                }
+            }
+        }
+
         // ---------------------------------------------------------------------------------------------
         // SECTION 1: MONITORING DAN TREND ANALYSIS SC
         // ---------------------------------------------------------------------------------------------
@@ -557,81 +659,72 @@ fun JakartaScreen(
                 SectionHeader(
                     icon = Icons.Default.Analytics,
                     title = "1. Laporan Monitoring & Trend Analysis",
-                    subtitle = "Status input s/d 17:00, vibrasi, temperatur, greasing, kebocoran & suara abnormal",
+                    subtitle = "Status input $checkRangeString, vibrasi, temperatur, greasing, kebocoran & suara abnormal",
                     accentColor = Color(0xFF1E88E5),
                     alertCount = totalMonitoringAlerts,
                     onExportExcel = {
-                        ExcelExporter.exportMonitoringExcel(context, vibrationLogs)
+                        exportReportType = "monitoring"
+                        showExcelExportDialog = true
                     }
                 )
             }
 
-            // Sub-item 1A: Status Belum Melakukan Input s/d Jam 17:00
+            // Sub-item 1A: Status Belum Melakukan Input dari Jam 07:00 s/d Jam Saat Pengecekan
             val card1ANeedsAttention = unitsMissingVibInput.isNotEmpty()
             item {
                 Card(
                     colors = CardDefaults.cardColors(
-                        containerColor = when {
-                            isPast17 && card1ANeedsAttention -> Color(0xFFFFEBEE) // Merah muda lembut jika overdue
-                            card1ANeedsAttention -> Color(0xFFFFF8E1) // Kuning/oranye lembut jika butuh perhatian
-                            else -> Color.White
-                        }
+                        containerColor = if (card1ANeedsAttention) Color(0xFFFFF8E1) else Color.White
                     ),
                     shape = RoundedCornerShape(14.dp),
                     border = BorderStroke(
                         1.dp,
-                        when {
-                            isPast17 && card1ANeedsAttention -> Color(0xFFEF5350)
-                            card1ANeedsAttention -> Color(0xFFFFB74D)
-                            else -> Color(0xFFE2E8F0)
-                        }
+                        if (card1ANeedsAttention) Color(0xFFFFB74D) else Color(0xFFE2E8F0)
                     ),
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         Row(
                             modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
+                            verticalAlignment = Alignment.Top
                         ) {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Icon(
-                                    imageVector = if (unitsMissingVibInput.isNotEmpty()) Icons.Default.Warning else Icons.Default.CheckCircle,
-                                    contentDescription = null,
-                                    tint = if (isPast17 && unitsMissingVibInput.isNotEmpty()) Color(0xFFD32F2F) else if (unitsMissingVibInput.isNotEmpty()) Color(0xFFF57C00) else Color(0xFF388E3C),
-                                    modifier = Modifier.size(18.dp)
-                                )
-                                Spacer(modifier = Modifier.width(8.dp))
+                            Icon(
+                                imageVector = if (unitsMissingVibInput.isNotEmpty()) Icons.Default.Warning else Icons.Default.CheckCircle,
+                                contentDescription = null,
+                                tint = if (unitsMissingVibInput.isNotEmpty()) Color(0xFFF57C00) else Color(0xFF388E3C),
+                                modifier = Modifier
+                                    .padding(top = 2.dp)
+                                    .size(18.dp)
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                                 Text(
-                                    "Status Input Mesin Hari Ini (Cut-off 17:00)",
+                                    "Status Input Mesin Hari Ini ($checkRangeString)",
                                     fontSize = 13.sp,
                                     fontWeight = FontWeight.Bold,
                                     color = SlateGrey
                                 )
-                            }
-                            Surface(
-                                color = if (unitsMissingVibInput.isEmpty()) Color(0xFFE8F5E9) else if (isPast17) Color(0xFFFFEBEE) else Color(0xFFFFF3E0),
-                                shape = RoundedCornerShape(6.dp)
-                            ) {
-                                Text(
-                                    text = if (unitsMissingVibInput.isEmpty()) "Lengkap (8/8 Diinput)" else if (isPast17) "${unitsMissingVibInput.size} Temuan Overdue" else "${unitsMissingVibInput.size} Menunggu Input",
-                                    fontSize = 10.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = if (unitsMissingVibInput.isEmpty()) Color(0xFF2E7D32) else if (isPast17) Color(0xFFC62828) else Color(0xFFE65100),
-                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
-                                )
+                                Surface(
+                                    color = if (unitsMissingVibInput.isEmpty()) Color(0xFFE8F5E9) else Color(0xFFFFF3E0),
+                                    shape = RoundedCornerShape(6.dp)
+                                ) {
+                                    Text(
+                                        text = if (unitsMissingVibInput.isEmpty()) "Lengkap (8/8 Diinput)" else "${unitsMissingVibInput.size} Belum Input",
+                                        fontSize = 10.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = if (unitsMissingVibInput.isEmpty()) Color(0xFF2E7D32) else Color(0xFFE65100),
+                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
+                                    )
+                                }
                             }
                         }
 
                         if (unitsMissingVibInput.isNotEmpty()) {
                             Text(
-                                text = if (isPast17)
-                                    "PERINGATAN OVERDUE: Hingga pukul 17:00 sore, unit mesin berikut BELUM melakukan input data monitoring:"
-                                else
-                                    "Unit mesin yang belum memasukkan data monitoring hari ini (menunggu sebelum 17:00):",
+                                text = "Unit mesin yang belum melakukan input dari jam 07:00 sampai jam $currentHourMinute:",
                                 fontSize = 11.sp,
-                                color = if (isPast17) Color(0xFFC62828) else Color(0xFF424242),
-                                fontWeight = if (isPast17) FontWeight.Bold else FontWeight.Normal
+                                color = Color(0xFFD84315),
+                                fontWeight = FontWeight.SemiBold
                             )
 
                             Row(
@@ -642,9 +735,9 @@ fun JakartaScreen(
                             ) {
                                 unitsMissingVibInput.forEach { unitId ->
                                     Surface(
-                                        color = if (isPast17) Color(0xFFFFCDD2) else Color(0xFFFFE0B2),
+                                        color = Color(0xFFFFE0B2),
                                         shape = RoundedCornerShape(8.dp),
-                                        border = BorderStroke(1.dp, if (isPast17) Color(0xFFEF5350) else Color(0xFFFFB74D))
+                                        border = BorderStroke(1.dp, Color(0xFFFFB74D))
                                     ) {
                                         Row(
                                             modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
@@ -653,23 +746,30 @@ fun JakartaScreen(
                                             Icon(
                                                 imageVector = Icons.Default.ErrorOutline,
                                                 contentDescription = null,
-                                                tint = if (isPast17) Color(0xFFB71C1C) else Color(0xFFE65100),
+                                                tint = Color(0xFFE65100),
                                                 modifier = Modifier.size(13.dp)
                                             )
                                             Spacer(modifier = Modifier.width(4.dp))
                                             Text(
-                                                text = "$unitId (Belum Ada Input)",
+                                                text = "$unitId (Belum Input)",
                                                 fontSize = 11.sp,
                                                 fontWeight = FontWeight.Bold,
-                                                color = if (isPast17) Color(0xFFB71C1C) else Color(0xFFE65100)
+                                                color = Color(0xFFBF360C)
                                             )
                                         }
                                     }
                                 }
                             }
+
+                            Text(
+                                text = "Data dihitung dari jam 07:00 sampai saat pengecekan ($currentHourMinute) dan akan diperbarui kembali $nextRenewalText.",
+                                fontSize = 10.sp,
+                                color = Color.Gray,
+                                fontStyle = androidx.compose.ui.text.font.FontStyle.Italic
+                            )
                         } else {
                             Text(
-                                text = "Semua unit mesin Sludge Centrifuge (SC-01 s/d SC-08) telah berhasil diinput untuk hari ini.",
+                                text = "Semua unit mesin Sludge Centrifuge (SC-01 s/d SC-08) telah melakukan input dari jam 07:00 sampai jam $currentHourMinute. Data akan diperbarui kembali $nextRenewalText.",
                                 fontSize = 11.sp,
                                 color = Color(0xFF2E7D32)
                             )
@@ -748,7 +848,7 @@ fun JakartaScreen(
                                                 )
                                             }
                                             Text(
-                                                text = SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date(alert.log.timestamp)),
+                                                text = WibDateUtils.format("HH:mm", alert.log.timestamp) + " WIB",
                                                 fontSize = 10.sp,
                                                 color = Color.Gray
                                             )
@@ -801,94 +901,93 @@ fun JakartaScreen(
                 SectionHeader(
                     icon = Icons.Default.FactCheck,
                     title = "2. Laporan CILT (Cleaning, Inspection, Lubricating, Tightening)",
-                    subtitle = "Status eksekusi s/d 17:00 & pelaporan temuan ketidaksesuaian di lapangan",
+                    subtitle = "Status eksekusi $checkRangeString & pelaporan temuan ketidaksesuaian di lapangan",
                     accentColor = Color(0xFFFB8C00),
                     alertCount = totalCiltAlerts,
                     onExportExcel = {
-                        ExcelExporter.exportCiltExcel(context, ciltChecks)
+                        exportReportType = "cilt"
+                        showExcelExportDialog = true
                     }
                 )
-            }
+                Spacer(modifier = Modifier.height(4.dp))
 
-            val card2NeedsAttention = (isPast17 && isCiltNotDoneToday) || isCiltNotDoneToday || ciltFindings.isNotEmpty()
-            item {
+                val card2NeedsAttention = isCiltNotDoneToday || ciltFindings.isNotEmpty()
                 Card(
                     colors = CardDefaults.cardColors(
-                        containerColor = when {
-                            isPast17 && isCiltNotDoneToday -> Color(0xFFFFEBEE) // Merah muda jika overdue s/d 17:00
-                            card2NeedsAttention -> Color(0xFFFFF8E1) // Kuning/oranye lembut jika butuh perhatian / ada temuan
-                            else -> Color.White
-                        }
+                        containerColor = if (card2NeedsAttention) Color(0xFFFFF8E1) else Color.White
                     ),
                     shape = RoundedCornerShape(14.dp),
                     border = BorderStroke(
                         1.dp,
-                        when {
-                            isPast17 && isCiltNotDoneToday -> Color(0xFFEF5350)
-                            card2NeedsAttention -> Color(0xFFFFB74D)
-                            else -> Color(0xFFE2E8F0)
-                        }
+                        if (card2NeedsAttention) Color(0xFFFFB74D) else Color(0xFFE2E8F0)
                     ),
                     modifier = Modifier.fillMaxWidth()
                 ) {
-                    Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Text(
-                                "Status Pelaksanaan CILT Hari Ini",
-                                fontSize = 13.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = SlateGrey
-                            )
-                            Surface(
-                                color = if (isCiltNotDoneToday && isPast17) Color(0xFFFFEBEE) else if (isCiltNotDoneToday) Color(0xFFFFF3E0) else Color(0xFFE8F5E9),
-                                shape = RoundedCornerShape(6.dp)
+                    Column(
+                        modifier = Modifier.padding(start = 12.dp, end = 12.dp, top = 8.dp, bottom = 10.dp),
+                        verticalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
                             ) {
                                 Text(
-                                    text = if (isCiltNotDoneToday && isPast17) "1 Temuan (OVERDUE Belum CILT)" else if (isCiltNotDoneToday) "1 Temuan (Belum Dilakukan)" else "${todayCiltChecks.size} Checklist Selesai",
-                                    fontSize = 10.sp,
+                                    "Status Pelaksanaan CILT Hari Ini ($checkRangeString)",
+                                    fontSize = 12.5.sp,
                                     fontWeight = FontWeight.Bold,
-                                    color = if (isCiltNotDoneToday && isPast17) Color(0xFFC62828) else if (isCiltNotDoneToday) Color(0xFFE65100) else Color(0xFF2E7D32),
-                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
+                                    color = SlateGrey
                                 )
-                            }
-                        }
-
-                        if (isCiltNotDoneToday) {
-                            Surface(
-                                color = if (isPast17) Color(0xFFFFEBEE) else Color(0xFFFFF8E1),
-                                shape = RoundedCornerShape(8.dp),
-                                border = BorderStroke(1.dp, if (isPast17) Color(0xFFEF9A9A) else Color(0xFFFFE082)),
-                                modifier = Modifier.fillMaxWidth()
-                            ) {
-                                Row(modifier = Modifier.padding(10.dp), verticalAlignment = Alignment.CenterVertically) {
-                                    Icon(
-                                        imageVector = if (isPast17) Icons.Default.Error else Icons.Default.WarningAmber,
-                                        contentDescription = null,
-                                        tint = if (isPast17) Color(0xFFD32F2F) else Color(0xFFF57C00),
-                                        modifier = Modifier.size(20.dp)
-                                    )
-                                    Spacer(modifier = Modifier.width(8.dp))
+                                Surface(
+                                    color = if (isCiltNotDoneToday) Color(0xFFFFEBEE) else Color(0xFFE8F5E9),
+                                    shape = RoundedCornerShape(4.dp)
+                                ) {
                                     Text(
-                                        text = if (isPast17)
-                                            "PERINGATAN: Sampai jam 17:00 sore kegiatan CILT BELUM dilakukan sama sekali oleh operator!"
-                                        else
-                                            "Peringatan: Sampai saat ini checklist CILT hari ini belum tercatat. Pastikan dilakukan sebelum jam 17:00 sore.",
-                                        fontSize = 11.sp,
-                                        color = if (isPast17) Color(0xFFB71C1C) else Color(0xFFBF360C),
-                                        fontWeight = FontWeight.SemiBold
+                                        text = if (isCiltNotDoneToday) "1 Temuan (Belum Dilakukan)" else "${todayCiltChecks.size} Checklist Selesai",
+                                        fontSize = 9.5.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = if (isCiltNotDoneToday) Color(0xFFC62828) else Color(0xFF2E7D32),
+                                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
                                     )
                                 }
                             }
-                        } else {
-                            Text(
-                                text = "Kegiatan CILT telah tercatat hari ini sebanyak ${todayCiltChecks.size} kali inspeksi.",
-                                fontSize = 11.sp,
-                                color = Color(0xFF2E7D32)
-                            )
+
+                            if (isCiltNotDoneToday) {
+                                Surface(
+                                    color = Color(0xFFFFF8E1),
+                                    shape = RoundedCornerShape(6.dp),
+                                    border = BorderStroke(1.dp, Color(0xFFFFE082)),
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    Row(
+                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 5.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.WarningAmber,
+                                            contentDescription = null,
+                                            tint = Color(0xFFF57C00),
+                                            modifier = Modifier.size(16.dp)
+                                        )
+                                        Spacer(modifier = Modifier.width(6.dp))
+                                        Text(
+                                            text = "Peringatan: Belum ada checklist CILT yang tercatat dari jam 07:00 sampai jam $currentHourMinute. Data akan diperbarui lagi $nextRenewalText.",
+                                            fontSize = 10.5.sp,
+                                            lineHeight = 14.sp,
+                                            color = Color(0xFFBF360C),
+                                            fontWeight = FontWeight.SemiBold
+                                        )
+                                    }
+                                }
+                            } else {
+                                Text(
+                                    text = "Kegiatan CILT telah tercatat hari ini sebanyak ${todayCiltChecks.size} kali inspeksi (07:00 s/d $currentHourMinute). Data akan diperbarui lagi $nextRenewalText.",
+                                    fontSize = 10.5.sp,
+                                    lineHeight = 14.sp,
+                                    color = Color(0xFF2E7D32)
+                                )
+                            }
                         }
 
                         // CILT Findings / Defects
@@ -938,7 +1037,7 @@ fun JakartaScreen(
                                                 color = Color(0xFFBF360C)
                                             )
                                             Text(
-                                                text = SimpleDateFormat("dd MMM, HH:mm", Locale.getDefault()).format(Date(defect.check.timestamp)),
+                                                text = WibDateUtils.format("dd MMM, HH:mm", defect.check.timestamp) + " WIB",
                                                 fontSize = 10.sp,
                                                 color = Color.Gray
                                             )
@@ -986,7 +1085,8 @@ fun JakartaScreen(
                     accentColor = Color(0xFF5E35B1),
                     alertCount = totalPmAlerts,
                     onExportExcel = {
-                        ExcelExporter.exportReliabilityPmExcel(context, reports, reliabilityChecks)
+                        exportReportType = "reliability"
+                        showExcelExportDialog = true
                     }
                 )
             }
@@ -1097,7 +1197,7 @@ fun JakartaScreen(
                                                 color = Color.Gray
                                             )
                                             Text(
-                                                text = SimpleDateFormat("dd MMM yyyy, HH:mm", Locale.getDefault()).format(Date(rep.timestamp)),
+                                                text = WibDateUtils.format("dd MMM yyyy, HH:mm", rep.timestamp) + " WIB",
                                                 fontSize = 10.sp,
                                                 color = Color.Gray
                                             )
@@ -1125,11 +1225,12 @@ fun JakartaScreen(
                 SectionHeader(
                     icon = Icons.Default.WaterDrop,
                     title = "4. Laporan Kegiatan Flushing & Progres Aktual H+1",
-                    subtitle = "Pelaporan kegiatan s/d jam 17:00 & monitoring pelaksanaan bertahap",
+                    subtitle = "Pelaporan kegiatan $checkRangeString & monitoring pelaksanaan bertahap",
                     accentColor = Color(0xFF00897B),
                     alertCount = totalFlushingAlerts,
                     onExportExcel = {
-                        ExcelExporter.exportFlushingExcel(context, flushingLogs)
+                        exportReportType = "flushing"
+                        showExcelExportDialog = true
                     }
                 )
             }
@@ -1138,20 +1239,12 @@ fun JakartaScreen(
             item {
                 Card(
                     colors = CardDefaults.cardColors(
-                        containerColor = when {
-                            isPast17 && isFlushingNotDoneToday -> Color(0xFFFFEBEE) // Merah muda jika overdue s/d 17:00
-                            card4NeedsAttention -> Color(0xFFFFF8E1) // Kuning lembut jika ada temuan
-                            else -> Color.White
-                        }
+                        containerColor = if (card4NeedsAttention) Color(0xFFFFF8E1) else Color.White
                     ),
                     shape = RoundedCornerShape(14.dp),
                     border = BorderStroke(
                         1.dp,
-                        when {
-                            isPast17 && isFlushingNotDoneToday -> Color(0xFFEF5350)
-                            card4NeedsAttention -> Color(0xFFFFB74D)
-                            else -> Color(0xFFE2E8F0)
-                        }
+                        if (card4NeedsAttention) Color(0xFFFFB74D) else Color(0xFFE2E8F0)
                     ),
                     modifier = Modifier.fillMaxWidth()
                 ) {
@@ -1162,7 +1255,7 @@ fun JakartaScreen(
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Text(
-                                "Status Flushing Hari Ini (Cut-off 17:00)",
+                                "Status Flushing Hari Ini ($checkRangeString)",
                                 fontSize = 13.sp,
                                 fontWeight = FontWeight.Bold,
                                 color = SlateGrey
@@ -1172,9 +1265,7 @@ fun JakartaScreen(
                                 shape = RoundedCornerShape(6.dp)
                             ) {
                                 Text(
-                                    text = if (isFlushingNotDoneToday && isPast17)
-                                        "1 Temuan (OVERDUE 0 Kegiatan)"
-                                    else if (isFlushingNotDoneToday)
+                                    text = if (isFlushingNotDoneToday)
                                         "1 Temuan (Belum Dikerjakan)"
                                     else if (incompleteFlushingLogs.isNotEmpty())
                                         "${incompleteFlushingLogs.size} Temuan (Siklus Tidak Tuntas)"
@@ -1190,33 +1281,30 @@ fun JakartaScreen(
 
                         if (isFlushingNotDoneToday) {
                             Surface(
-                                color = if (isPast17) Color(0xFFFFEBEE) else Color(0xFFFFF8E1),
+                                color = Color(0xFFFFF8E1),
                                 shape = RoundedCornerShape(8.dp),
-                                border = BorderStroke(1.dp, if (isPast17) Color(0xFFEF9A9A) else Color(0xFFFFE082)),
+                                border = BorderStroke(1.dp, Color(0xFFFFE082)),
                                 modifier = Modifier.fillMaxWidth()
                             ) {
                                 Row(modifier = Modifier.padding(10.dp), verticalAlignment = Alignment.CenterVertically) {
                                     Icon(
-                                        imageVector = if (isPast17) Icons.Default.Error else Icons.Default.WarningAmber,
+                                        imageVector = Icons.Default.WarningAmber,
                                         contentDescription = null,
-                                        tint = if (isPast17) Color(0xFFD32F2F) else Color(0xFFF57C00),
+                                        tint = Color(0xFFF57C00),
                                         modifier = Modifier.size(20.dp)
                                     )
                                     Spacer(modifier = Modifier.width(8.dp))
                                     Text(
-                                        text = if (isPast17)
-                                            "PERINGATAN KRITIKAL: Sampai jam 17:00 sore kegiatan flushing TIDAK DILAKUKAN SAMA SEKALI oleh operator!"
-                                        else
-                                            "Peringatan: Kegiatan flushing belum dilakukan hari ini. Pastikan operator melaksanakan flushing sebelum cut-off jam 17:00 sore.",
+                                        text = "Peringatan: Belum ada kegiatan flushing yang tercatat dari jam 07:00 sampai jam $currentHourMinute. Data akan diperbarui lagi $nextRenewalText.",
                                         fontSize = 11.sp,
-                                        color = if (isPast17) Color(0xFFB71C1C) else Color(0xFFBF360C),
+                                        color = Color(0xFFBF360C),
                                         fontWeight = FontWeight.SemiBold
                                     )
                                 }
                             }
                         } else {
                             Text(
-                                text = "Flushing berjalan aktif hari ini dengan total ${todayFlushingLogs.size} kali flushing terlaksana.",
+                                text = "Flushing berjalan aktif dengan total ${todayFlushingLogs.size} kali flushing terlaksana dari jam 07:00 sampai jam $currentHourMinute. Data akan diperbarui lagi $nextRenewalText.",
                                 fontSize = 11.sp,
                                 color = Color(0xFF2E7D32)
                             )
@@ -1254,7 +1342,7 @@ fun JakartaScreen(
                                             }
                                         }
                                         Text(
-                                            text = SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date(log.timestamp)),
+                                            text = WibDateUtils.format("HH:mm", log.timestamp) + " WIB",
                                             fontSize = 10.sp,
                                             color = Color.Gray
                                         )
@@ -1352,6 +1440,29 @@ fun JakartaScreen(
                 }
             }
         }
+    }
+
+    if (showExcelExportDialog) {
+        ExcelExportDateRangeDialog(
+            initialExportType = exportReportType,
+            vibrationLogs = vibrationLogs,
+            ciltChecks = ciltChecks,
+            reports = reports,
+            reliabilityChecks = reliabilityChecks,
+            flushingLogs = flushingLogs,
+            onDismiss = { showExcelExportDialog = false },
+            onExport = { type, start, end, isAllData ->
+                val sDate = if (isAllData) null else start
+                val eDate = if (isAllData) null else end
+                when (type) {
+                    "monitoring" -> ExcelExporter.exportMonitoringExcel(context, vibrationLogs, sDate, eDate)
+                    "cilt" -> ExcelExporter.exportCiltExcel(context, ciltChecks, sDate, eDate)
+                    "reliability" -> ExcelExporter.exportReliabilityPmExcel(context, reports, reliabilityChecks, sDate, eDate)
+                    "flushing" -> ExcelExporter.exportFlushingExcel(context, flushingLogs, sDate, eDate)
+                    else -> ExcelExporter.exportAllReportsExcel(context, vibrationLogs, ciltChecks, reports, reliabilityChecks, flushingLogs, sDate, eDate)
+                }
+            }
+        )
     }
 }
 
@@ -1490,4 +1601,478 @@ fun SectionHeader(
             }
         }
     }
+}
+
+@Composable
+fun ExcelExportDateRangeDialog(
+    initialExportType: String = "all",
+    vibrationLogs: List<VibrationLog>,
+    ciltChecks: List<CiltCheck>,
+    reports: List<AbnormalityReport>,
+    reliabilityChecks: List<ReliabilityPmCheck>,
+    flushingLogs: List<FlushingLog>,
+    onDismiss: () -> Unit,
+    onExport: (type: String, startDate: Long, endDate: Long, isAllData: Boolean) -> Unit
+) {
+    val context = LocalContext.current
+    var selectedType by remember { mutableStateOf(initialExportType) }
+    var selectedPreset by remember { mutableStateOf("Hari Ini") }
+
+    val todayStart = remember { WibDateUtils.getStartOfDay() }
+    val todayEnd = remember { todayStart + 24 * 60 * 60 * 1000L - 1L }
+
+    var startDate by remember { mutableStateOf(todayStart) }
+    var endDate by remember { mutableStateOf(todayEnd) }
+
+    fun applyPreset(preset: String) {
+        selectedPreset = preset
+        when (preset) {
+            "Hari Ini" -> {
+                startDate = WibDateUtils.getStartOfDay()
+                endDate = startDate + 24 * 60 * 60 * 1000L - 1L
+            }
+            "7 Hari" -> {
+                val cal = WibDateUtils.getCalendar().apply {
+                    add(Calendar.DAY_OF_YEAR, -6)
+                    set(Calendar.HOUR_OF_DAY, 0)
+                    set(Calendar.MINUTE, 0)
+                    set(Calendar.SECOND, 0)
+                    set(Calendar.MILLISECOND, 0)
+                }
+                startDate = cal.timeInMillis
+                endDate = WibDateUtils.getStartOfDay() + 24 * 60 * 60 * 1000L - 1L
+            }
+            "30 Hari" -> {
+                val cal = WibDateUtils.getCalendar().apply {
+                    add(Calendar.DAY_OF_YEAR, -29)
+                    set(Calendar.HOUR_OF_DAY, 0)
+                    set(Calendar.MINUTE, 0)
+                    set(Calendar.SECOND, 0)
+                    set(Calendar.MILLISECOND, 0)
+                }
+                startDate = cal.timeInMillis
+                endDate = WibDateUtils.getStartOfDay() + 24 * 60 * 60 * 1000L - 1L
+            }
+            "Bulan Ini" -> {
+                val cal = WibDateUtils.getCalendar().apply {
+                    set(Calendar.DAY_OF_MONTH, 1)
+                    set(Calendar.HOUR_OF_DAY, 0)
+                    set(Calendar.MINUTE, 0)
+                    set(Calendar.SECOND, 0)
+                    set(Calendar.MILLISECOND, 0)
+                }
+                startDate = cal.timeInMillis
+                endDate = WibDateUtils.getStartOfDay() + 24 * 60 * 60 * 1000L - 1L
+            }
+            "Semua Data" -> {
+                startDate = 0L
+                endDate = System.currentTimeMillis() + 86400000L
+            }
+            "Kustom" -> {}
+        }
+    }
+
+    fun pickStartDate() {
+        val cal = WibDateUtils.getCalendar(if (startDate > 0L) startDate else todayStart)
+        android.app.DatePickerDialog(
+            context,
+            { _, year, month, dayOfMonth ->
+                val newCal = WibDateUtils.getCalendar().apply {
+                    set(Calendar.YEAR, year)
+                    set(Calendar.MONTH, month)
+                    set(Calendar.DAY_OF_MONTH, dayOfMonth)
+                    set(Calendar.HOUR_OF_DAY, 0)
+                    set(Calendar.MINUTE, 0)
+                    set(Calendar.SECOND, 0)
+                    set(Calendar.MILLISECOND, 0)
+                }
+                val newStart = newCal.timeInMillis
+                startDate = newStart
+                if (endDate < newStart) {
+                    endDate = newStart + 24 * 60 * 60 * 1000L - 1L
+                }
+                selectedPreset = "Kustom"
+            },
+            cal.get(Calendar.YEAR),
+            cal.get(Calendar.MONTH),
+            cal.get(Calendar.DAY_OF_MONTH)
+        ).show()
+    }
+
+    fun pickEndDate() {
+        val cal = WibDateUtils.getCalendar(if (endDate > 0L) endDate else todayEnd)
+        android.app.DatePickerDialog(
+            context,
+            { _, year, month, dayOfMonth ->
+                val newCal = WibDateUtils.getCalendar().apply {
+                    set(Calendar.YEAR, year)
+                    set(Calendar.MONTH, month)
+                    set(Calendar.DAY_OF_MONTH, dayOfMonth)
+                    set(Calendar.HOUR_OF_DAY, 23)
+                    set(Calendar.MINUTE, 59)
+                    set(Calendar.SECOND, 59)
+                    set(Calendar.MILLISECOND, 999)
+                }
+                val newEnd = newCal.timeInMillis
+                endDate = newEnd
+                if (startDate > newEnd) {
+                    startDate = WibDateUtils.getCalendar(newEnd).apply {
+                        set(Calendar.HOUR_OF_DAY, 0)
+                        set(Calendar.MINUTE, 0)
+                        set(Calendar.SECOND, 0)
+                        set(Calendar.MILLISECOND, 0)
+                    }.timeInMillis
+                }
+                selectedPreset = "Kustom"
+            },
+            cal.get(Calendar.YEAR),
+            cal.get(Calendar.MONTH),
+            cal.get(Calendar.DAY_OF_MONTH)
+        ).show()
+    }
+
+    val isAllData = selectedPreset == "Semua Data"
+    val countMonitoring = remember(startDate, endDate, isAllData, vibrationLogs) {
+        if (isAllData) vibrationLogs.size else vibrationLogs.count { it.timestamp in startDate..endDate }
+    }
+    val countCilt = remember(startDate, endDate, isAllData, ciltChecks) {
+        if (isAllData) ciltChecks.size else ciltChecks.count { it.timestamp in startDate..endDate }
+    }
+    val countAbnormality = remember(startDate, endDate, isAllData, reports) {
+        if (isAllData) reports.size else reports.count { it.timestamp in startDate..endDate }
+    }
+    val countPmChecks = remember(startDate, endDate, isAllData, reliabilityChecks) {
+        if (isAllData) reliabilityChecks.size else reliabilityChecks.count { it.timestamp in startDate..endDate }
+    }
+    val countFlushing = remember(startDate, endDate, isAllData, flushingLogs) {
+        if (isAllData) flushingLogs.size else flushingLogs.count { it.timestamp in startDate..endDate }
+    }
+
+    val totalRecordsFound = when (selectedType) {
+        "monitoring" -> countMonitoring
+        "cilt" -> countCilt
+        "reliability" -> countAbnormality + countPmChecks
+        "flushing" -> countFlushing
+        else -> countMonitoring + countCilt + countAbnormality + countPmChecks + countFlushing
+    }
+
+    val displayFormatter = remember { WibDateUtils.createFormatter("dd MMM yyyy") }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        containerColor = Color.White,
+        title = null,
+        text = {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(14.dp)
+            ) {
+                // Header
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Surface(
+                        color = Color.White,
+                        shape = CircleShape,
+                        border = BorderStroke(1.dp, Color(0xFFE0E0E0)),
+                        modifier = Modifier.size(40.dp)
+                    ) {
+                        Box(contentAlignment = Alignment.Center) {
+                            Icon(
+                                imageVector = Icons.Default.FileDownload,
+                                contentDescription = null,
+                                tint = Color.Black,
+                                modifier = Modifier.size(22.dp)
+                            )
+                        }
+                    }
+                    Spacer(modifier = Modifier.width(12.dp))
+                    Column {
+                        Text(
+                            text = "Tarik Data Excel",
+                            fontSize = 16.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Color.Black
+                        )
+                        Text(
+                            text = "Tentukan periode data ditarik dari kapan & sampai kapan",
+                            fontSize = 11.sp,
+                            color = Color.DarkGray
+                        )
+                    }
+                }
+
+                HorizontalDivider(color = Color(0xFFE0E0E0))
+
+                // Jenis Laporan Selector
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Text(
+                        text = "1. Pilih Laporan yang Ditarik:",
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Color.Black
+                    )
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .horizontalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        val reportOptions = listOf(
+                            "all" to "Semua Laporan",
+                            "monitoring" to "1. Monitoring SC",
+                            "cilt" to "2. CILT",
+                            "reliability" to "3. Reliability PM",
+                            "flushing" to "4. Flushing"
+                        )
+                        reportOptions.forEach { (typeKey, label) ->
+                            val isSelected = selectedType == typeKey
+                            FilterChip(
+                                selected = isSelected,
+                                onClick = { selectedType = typeKey },
+                                label = {
+                                    Text(
+                                        text = label,
+                                        fontSize = 11.sp,
+                                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                                        color = Color.Black
+                                    )
+                                },
+                                colors = FilterChipDefaults.filterChipColors(
+                                    containerColor = Color.White,
+                                    selectedContainerColor = Color(0xFFEEEEEE),
+                                    labelColor = Color.Black,
+                                    selectedLabelColor = Color.Black
+                                ),
+                                border = FilterChipDefaults.filterChipBorder(
+                                    enabled = true,
+                                    selected = isSelected,
+                                    borderColor = if (isSelected) Color.Black else Color(0xFFCFD8DC),
+                                    selectedBorderColor = Color.Black,
+                                    borderWidth = if (isSelected) 1.5.dp else 1.dp
+                                )
+                            )
+                        }
+                    }
+                }
+
+                // Pilihan Cepat Rentang Tanggal (Presets)
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Text(
+                        text = "2. Pilihan Cepat Rentang Tanggal:",
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Color.Black
+                    )
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .horizontalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        listOf("Hari Ini", "7 Hari", "30 Hari", "Bulan Ini", "Semua Data").forEach { preset ->
+                            val isPresetSelected = selectedPreset == preset
+                            SuggestionChip(
+                                onClick = { applyPreset(preset) },
+                                colors = SuggestionChipDefaults.suggestionChipColors(
+                                    containerColor = Color.White
+                                ),
+                                label = {
+                                    Text(
+                                        text = preset,
+                                        fontSize = 10.sp,
+                                        fontWeight = if (isPresetSelected) FontWeight.Bold else FontWeight.Normal,
+                                        color = Color.Black
+                                    )
+                                },
+                                border = SuggestionChipDefaults.suggestionChipBorder(
+                                    enabled = true,
+                                    borderColor = if (isPresetSelected) Color.Black else Color(0xFFCFD8DC),
+                                    borderWidth = if (isPresetSelected) 1.5.dp else 1.dp
+                                )
+                            )
+                        }
+                    }
+                }
+
+                // Pemilihan Tanggal Kustom (Dari Tanggal s/d Sampai Tanggal)
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Text(
+                        text = "3. Tentukan Rentang Tanggal Penarikan:",
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Color.Black
+                    )
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        // Dari Tanggal
+                        Surface(
+                            modifier = Modifier
+                                .weight(1f)
+                                .clickable { pickStartDate() },
+                            shape = RoundedCornerShape(10.dp),
+                            color = Color.White,
+                            border = BorderStroke(1.dp, Color(0xFFB0BEC5))
+                        ) {
+                            Column(modifier = Modifier.padding(10.dp)) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text(
+                                        text = "DARI TANGGAL",
+                                        fontSize = 9.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = Color.Gray
+                                    )
+                                    Icon(
+                                        imageVector = Icons.Default.CalendarToday,
+                                        contentDescription = null,
+                                        tint = Color.Black,
+                                        modifier = Modifier.size(14.dp)
+                                    )
+                                }
+                                Spacer(modifier = Modifier.height(4.dp))
+                                Text(
+                                    text = if (isAllData) "Awal Data" else displayFormatter.format(Date(startDate)),
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color.Black
+                                )
+                            }
+                        }
+
+                        Icon(
+                            imageVector = Icons.Default.ArrowForward,
+                            contentDescription = null,
+                            tint = Color.Gray,
+                            modifier = Modifier.size(16.dp)
+                        )
+
+                        // Sampai Tanggal
+                        Surface(
+                            modifier = Modifier
+                                .weight(1f)
+                                .clickable { pickEndDate() },
+                            shape = RoundedCornerShape(10.dp),
+                            color = Color.White,
+                            border = BorderStroke(1.dp, Color(0xFFB0BEC5))
+                        ) {
+                            Column(modifier = Modifier.padding(10.dp)) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text(
+                                        text = "SAMPAI TANGGAL",
+                                        fontSize = 9.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = Color.Gray
+                                    )
+                                    Icon(
+                                        imageVector = Icons.Default.Event,
+                                        contentDescription = null,
+                                        tint = Color.Black,
+                                        modifier = Modifier.size(14.dp)
+                                    )
+                                }
+                                Spacer(modifier = Modifier.height(4.dp))
+                                Text(
+                                    text = if (isAllData) "Hari Ini" else displayFormatter.format(Date(endDate)),
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color.Black
+                                )
+                            }
+                        }
+                    }
+                }
+
+                // Preview Jumlah Data Ditemukan
+                Surface(
+                    color = Color.White,
+                    shape = RoundedCornerShape(8.dp),
+                    border = BorderStroke(1.dp, if (totalRecordsFound > 0) Color(0xFFA5D6A7) else Color(0xFFFFE082)),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(modifier = Modifier.padding(10.dp)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(
+                                imageVector = if (totalRecordsFound > 0) Icons.Default.CheckCircle else Icons.Default.WarningAmber,
+                                contentDescription = null,
+                                tint = if (totalRecordsFound > 0) Color(0xFF2E7D32) else Color(0xFFF57F17),
+                                modifier = Modifier.size(18.dp)
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(
+                                text = if (totalRecordsFound > 0)
+                                    "Ditemukan $totalRecordsFound data untuk diekspor"
+                                else
+                                    "Tidak ada data pada periode tanggal ini",
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = Color.Black
+                            )
+                        }
+                        if (selectedType == "all" && totalRecordsFound > 0) {
+                            Spacer(modifier = Modifier.height(4.dp))
+                            Text(
+                                text = "Monitoring: $countMonitoring | CILT: $countCilt | Abnormality: $countAbnormality | PM: $countPmChecks | Flushing: $countFlushing",
+                                fontSize = 10.sp,
+                                color = Color.DarkGray
+                            )
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            OutlinedButton(
+                onClick = {
+                    onExport(selectedType, startDate, endDate, isAllData)
+                    onDismiss()
+                },
+                enabled = totalRecordsFound > 0,
+                colors = ButtonDefaults.outlinedButtonColors(
+                    containerColor = Color.White,
+                    contentColor = Color.Black
+                ),
+                border = BorderStroke(1.2.dp, if (totalRecordsFound > 0) Color.Black else Color(0xFFCFD8DC)),
+                shape = RoundedCornerShape(8.dp)
+            ) {
+                Icon(
+                    imageVector = Icons.Default.FileDownload,
+                    contentDescription = null,
+                    tint = if (totalRecordsFound > 0) Color.Black else Color.Gray,
+                    modifier = Modifier.size(16.dp)
+                )
+                Spacer(modifier = Modifier.width(6.dp))
+                Text(
+                    text = "Tarik Data Excel",
+                    fontWeight = FontWeight.Bold,
+                    color = if (totalRecordsFound > 0) Color.Black else Color.Gray,
+                    fontSize = 12.sp
+                )
+            }
+        },
+        dismissButton = {
+            OutlinedButton(
+                onClick = onDismiss,
+                shape = RoundedCornerShape(8.dp),
+                border = BorderStroke(1.dp, Color(0xFFCFD8DC))
+            ) {
+                Text("Batal", color = Color.Black, fontSize = 12.sp)
+            }
+        },
+        shape = RoundedCornerShape(16.dp)
+    )
 }

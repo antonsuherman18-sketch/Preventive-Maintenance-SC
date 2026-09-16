@@ -34,7 +34,7 @@ class Repository(private val db: AppDatabase) {
     fun setOnlineMode(online: Boolean) {
         _isOnline.value = online
         if (online) {
-            _syncStatus.value = "Terhubung dengan Jakarta HQ (Online Mode)"
+            _syncStatus.value = "Terhubung dengan Jakarta (Online Mode)"
         } else {
             _syncStatus.value = "(Offline Mode) - Data disimpan di database lokal"
         }

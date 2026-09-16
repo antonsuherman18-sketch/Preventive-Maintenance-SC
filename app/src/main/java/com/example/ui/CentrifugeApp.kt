@@ -49,6 +49,7 @@ import android.graphics.Paint
 import android.graphics.Typeface
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.data.*
+import com.example.util.WibDateUtils
 import java.text.SimpleDateFormat
 import java.util.*
 
@@ -93,7 +94,7 @@ fun CentrifugeApp(viewModel: CentrifugeViewModel) {
         }
     }
     val realTimeDateText = remember(currentTimeMillis / 1000) {
-        SimpleDateFormat("EEEE, dd MMMM yyyy HH:mm:ss", Locale("id", "ID")).format(Date(currentTimeMillis))
+        WibDateUtils.format("EEEE, dd MMMM yyyy HH:mm:ss", currentTimeMillis) + " WIB"
     }
 
     Scaffold(
@@ -260,43 +261,50 @@ fun CentrifugeApp(viewModel: CentrifugeViewModel) {
             ) {
                 Row(
                     modifier = Modifier
-                        .padding(horizontal = 16.dp, vertical = 8.dp)
+                        .padding(horizontal = 16.dp, vertical = 10.dp)
                         .fillMaxWidth(),
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.SpaceBetween
                 ) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(
-                            imageVector = Icons.Default.LocationOn,
-                            contentDescription = "Location",
-                            tint = Color.Red,
-                            modifier = Modifier.size(16.dp)
-                        )
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Column {
+                    Column(
+                        modifier = Modifier
+                            .weight(1f)
+                            .padding(end = 8.dp),
+                        verticalArrangement = Arrangement.spacedBy(3.dp)
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(5.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.AccessTime,
+                                contentDescription = "Tanggal Real Time",
+                                tint = BrandYellow,
+                                modifier = Modifier.size(13.dp)
+                            )
                             Text(
-                                text = "6321 Mill, Berau - Kaltim",
+                                text = realTimeDateText,
                                 color = Color.White,
                                 fontSize = 11.sp,
                                 fontWeight = FontWeight.SemiBold
                             )
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(4.dp)
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.AccessTime,
-                                    contentDescription = "Tanggal Real Time",
-                                    tint = BrandYellow,
-                                    modifier = Modifier.size(11.dp)
-                                )
-                                Text(
-                                    text = realTimeDateText,
-                                    color = Color.White.copy(alpha = 0.9f),
-                                    fontSize = 10.sp,
-                                    fontWeight = FontWeight.Medium
-                                )
-                            }
+                        }
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(5.dp)
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(6.dp)
+                                    .clip(CircleShape)
+                                    .background(if (isOnline) Color(0xFF4ADE80) else Color(0xFF94A3B8))
+                            )
+                            Text(
+                                text = syncStatus,
+                                color = Color.White.copy(alpha = 0.85f),
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.Normal
+                            )
                         }
                     }
                     Button(
@@ -325,16 +333,6 @@ fun CentrifugeApp(viewModel: CentrifugeViewModel) {
                         Text("Kirim ke Jakarta", color = Color.Black, fontSize = 10.sp, fontWeight = FontWeight.Bold)
                     }
                 }
-                Text(
-                    text = syncStatus,
-                    color = Color.White.copy(alpha = 0.8f),
-                    fontSize = 10.sp,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .background(Color.Black.copy(alpha = 0.2f))
-                        .padding(horizontal = 16.dp, vertical = 4.dp),
-                    textAlign = TextAlign.Center
-                )
             }
 
             // Animated Screen transition
@@ -434,7 +432,8 @@ data class UnitSummaryMetrics(
     val alarmStatus: String,
     val reportValues: UnitReportValues,
     val isMeasuredToday: Boolean,
-    val latestTodayLog: VibrationLog?
+    val latestTodayLog: VibrationLog?,
+    val todayLogCount: Int = 0
 )
 
 fun getUnitSummaryMetrics(
@@ -442,23 +441,12 @@ fun getUnitSummaryMetrics(
     timeRangeSelection: Int, // 0: Harian, 1: Mingguan, 2: Bulanan
     vibrationLogs: List<VibrationLog>
 ): UnitSummaryMetrics {
-    if (!unit.isRunning) {
-        return UnitSummaryMetrics(
-            avgVib = 0.0f,
-            avgTemp = 30.2f,
-            alarmStatus = "STANDBY",
-            reportValues = UnitReportValues(
-                0f, 0f, 0f, 0f, 0f, 32.5f, 28.0f,
-                isGreased = false, soundState = "Standby", hasLeakage = false,
-                greasingRatioText = "Standby", soundRatioText = "Standby", leakageRatioText = "Nihil"
-            ),
-            isMeasuredToday = false,
-            latestTodayLog = null
-        )
-    }
-
-    val cal = Calendar.getInstance().apply {
-        set(Calendar.HOUR_OF_DAY, 0)
+    val now = WibDateUtils.getCalendar()
+    val cal = WibDateUtils.getCalendar().apply {
+        if (now.get(Calendar.HOUR_OF_DAY) < 7) {
+            add(Calendar.DAY_OF_YEAR, -1)
+        }
+        set(Calendar.HOUR_OF_DAY, 7)
         set(Calendar.MINUTE, 0)
         set(Calendar.SECOND, 0)
         set(Calendar.MILLISECOND, 0)
@@ -492,6 +480,7 @@ fun getUnitSummaryMetrics(
     when (timeRangeSelection) {
         0 -> { // Harian
             if (isMeasuredToday && todayLogs.isNotEmpty()) {
+                // Sudah ada diambil datanya -> dihitung dengan rata-rata nilainya
                 val deAvg = todayLogs.map { it.driveEndVibration }.average().toFloat()
                 val ndeAvg = todayLogs.map { it.nonDriveEndVibration }.average().toFloat()
                 val mAvg = todayLogs.map { it.motorBearingVibration }.average().toFloat()
@@ -517,18 +506,17 @@ fun getUnitSummaryMetrics(
                 avgVib = listOf(deAvg, ndeAvg, mAvg, gAvg, bAvg).average().toFloat()
                 avgTemp = listOf(bTempAvg, mTempAvg).average().toFloat()
             } else {
-                // Hari ini belum diukur -> hasil pengukuran kosong pada report
+                // Belum ada dilakukan pengukuran -> nilai yang ada di masing-masing SC semuanya nol
                 reportValues = UnitReportValues(
-                    dev = null, nde = null, motorVib = null, gearboxVib = null, bowlVib = null,
-                    bearingTemp = null, motorTemp = null,
-                    isGreased = null, soundState = null, hasLeakage = null,
-                    greasingRatioText = null, soundRatioText = null, leakageRatioText = null
+                    dev = 0.0f, nde = 0.0f, motorVib = 0.0f, gearboxVib = 0.0f, bowlVib = 0.0f,
+                    bearingTemp = 0.0f, motorTemp = 0.0f,
+                    isGreased = false, soundState = "-", hasLeakage = false,
+                    greasingRatioText = "Belum Ada Pengukuran",
+                    soundRatioText = "Belum Ada Pengukuran",
+                    leakageRatioText = "Belum Ada Pengukuran"
                 )
-                // Nilai yang muncul dihitung rata-rata seluruh hasil vibrasi & suhu
-                val defaultVibPoints = listOf(baseDe, baseNde, baseMotor, baseGearbox, baseBowl)
-                avgVib = defaultVibPoints.average().toFloat()
-                val defaultTempPoints = listOf(baseBearing, baseMotorTemp)
-                avgTemp = defaultTempPoints.average().toFloat()
+                avgVib = 0.0f
+                avgTemp = 0.0f
             }
         }
         1 -> { // Mingguan
@@ -558,7 +546,7 @@ fun getUnitSummaryMetrics(
                 )
                 avgVib = listOf(deAvg, ndeAvg, mAvg, gAvg, bAvg).average().toFloat()
                 avgTemp = listOf(bTempAvg, mTempAvg).average().toFloat()
-            } else {
+            } else if (unit.isRunning) {
                 val avgDe = if (unit.weeklyDevVibHistory.isNotEmpty()) unit.weeklyDevVibHistory.average().toFloat() else baseDe
                 val avgNde = if (unit.weeklyNdevVibHistory.isNotEmpty()) unit.weeklyNdevVibHistory.average().toFloat() else baseNde
                 val avgMotor = (avgDe * 0.72f).coerceAtLeast(0.5f)
@@ -578,6 +566,14 @@ fun getUnitSummaryMetrics(
                 )
                 avgVib = listOf(avgDe, avgNde, avgMotor, avgGearbox, avgBowl).average().toFloat()
                 avgTemp = listOf(avgBearing, baseMotorTemp).average().toFloat()
+            } else {
+                reportValues = UnitReportValues(
+                    0f, 0f, 0f, 0f, 0f, 0f, 0f,
+                    isGreased = false, soundState = "Standby", hasLeakage = false,
+                    greasingRatioText = "Standby", soundRatioText = "Standby", leakageRatioText = "Nihil"
+                )
+                avgVib = 0.0f
+                avgTemp = 0.0f
             }
         }
         else -> { // Bulanan
@@ -607,7 +603,7 @@ fun getUnitSummaryMetrics(
                 )
                 avgVib = listOf(deAvg, ndeAvg, mAvg, gAvg, bAvg).average().toFloat()
                 avgTemp = listOf(bTempAvg, mTempAvg).average().toFloat()
-            } else {
+            } else if (unit.isRunning) {
                 val avgDe = if (unit.monthlyDevVibHistory.isNotEmpty()) unit.monthlyDevVibHistory.average().toFloat() else baseDe
                 val avgNde = if (unit.monthlyNdevVibHistory.isNotEmpty()) unit.monthlyNdevVibHistory.average().toFloat() else baseNde
                 val avgMotor = (avgDe * 0.72f).coerceAtLeast(0.5f)
@@ -627,14 +623,29 @@ fun getUnitSummaryMetrics(
                 )
                 avgVib = listOf(avgDe, avgNde, avgMotor, avgGearbox, avgBowl).average().toFloat()
                 avgTemp = listOf(avgBearing, baseMotorTemp).average().toFloat()
+            } else {
+                reportValues = UnitReportValues(
+                    0f, 0f, 0f, 0f, 0f, 0f, 0f,
+                    isGreased = false, soundState = "Standby", hasLeakage = false,
+                    greasingRatioText = "Standby", soundRatioText = "Standby", leakageRatioText = "Nihil"
+                )
+                avgVib = 0.0f
+                avgTemp = 0.0f
             }
         }
     }
 
-    val alarmStatus = if (!unit.isRunning) "STANDBY"
-        else if (avgVib >= unit.criticalVib || avgTemp >= unit.criticalTemp || (reportValues.dev ?: 0f) >= unit.criticalVib || (reportValues.bearingTemp ?: 0f) >= unit.criticalTemp) "CRITICAL"
-        else if (avgVib >= unit.warningVib || avgTemp >= unit.warningTemp || (reportValues.dev ?: 0f) >= unit.warningVib || (reportValues.bearingTemp ?: 0f) >= unit.warningTemp || (reportValues.hasLeakage == true)) "WARNING"
-        else "NORMAL"
+    val alarmStatus = if (timeRangeSelection == 0 && !isMeasuredToday) {
+        if (!unit.isRunning) "STANDBY" else "UNMEASURED"
+    } else if (!unit.isRunning && weeklyLogs.isEmpty() && monthlyLogs.isEmpty()) {
+        "STANDBY"
+    } else if (avgVib >= unit.criticalVib || avgTemp >= unit.criticalTemp || (reportValues.dev ?: 0f) >= unit.criticalVib || (reportValues.bearingTemp ?: 0f) >= unit.criticalTemp) {
+        "CRITICAL"
+    } else if (avgVib >= unit.warningVib || avgTemp >= unit.warningTemp || (reportValues.dev ?: 0f) >= unit.warningVib || (reportValues.bearingTemp ?: 0f) >= unit.warningTemp || (reportValues.hasLeakage == true)) {
+        "WARNING"
+    } else {
+        "NORMAL"
+    }
 
     return UnitSummaryMetrics(
         avgVib = avgVib,
@@ -642,7 +653,8 @@ fun getUnitSummaryMetrics(
         alarmStatus = alarmStatus,
         reportValues = reportValues,
         isMeasuredToday = isMeasuredToday,
-        latestTodayLog = latestTodayLog
+        latestTodayLog = latestTodayLog,
+        todayLogCount = todayLogs.size
     )
 }
 
@@ -655,13 +667,13 @@ fun ReportRowItem(
     threshold: Float,
     isDegree: Boolean = false
 ) {
-    val isMeasured = value != null
-    val isRed = isMeasured && (value!! > threshold)
-    val isGreen = isMeasured && (value!! <= threshold)
+    val isZeroOrNull = value == null || value == 0f
+    val isRed = !isZeroOrNull && (value!! > threshold)
+    val isGreen = !isZeroOrNull && (value!! <= threshold)
 
-    val bgColor = if (!isMeasured) Color(0xFFF1F5F9) else if (isRed) Color(0xFFFFCDD2) else Color(0xFFC8E6C9)
-    val borderColor = if (!isMeasured) Color(0xFFCBD5E1) else if (isRed) Color(0xFFD32F2F) else Color(0xFF2E7D32)
-    val textColor = if (!isMeasured) Color.Gray else if (isRed) Color(0xFFB71C1C) else Color(0xFF1B5E20)
+    val bgColor = if (isZeroOrNull) Color(0xFFF1F5F9) else if (isRed) Color(0xFFFFCDD2) else Color(0xFFC8E6C9)
+    val borderColor = if (isZeroOrNull) Color(0xFFCBD5E1) else if (isRed) Color(0xFFD32F2F) else Color(0xFF2E7D32)
+    val textColor = if (isZeroOrNull) Color.Gray else if (isRed) Color(0xFFB71C1C) else Color(0xFF1B5E20)
 
     Row(
         modifier = Modifier
@@ -686,7 +698,7 @@ fun ReportRowItem(
             contentAlignment = Alignment.Center
         ) {
             Text(
-                text = if (isMeasured) String.format(Locale.US, "%.2f", value) else "-",
+                text = if (value != null) String.format(Locale.US, "%.2f", value) else "0.00",
                 fontSize = 12.sp,
                 fontWeight = FontWeight.Bold,
                 color = textColor
@@ -871,7 +883,7 @@ fun DashboardScreen(
 
             val weeklyDevVibPoints = List(7) { i ->
                 val offset = i - 6
-                val c = Calendar.getInstance().apply {
+                val c = WibDateUtils.getCalendar().apply {
                     add(Calendar.DAY_OF_YEAR, offset)
                     set(Calendar.HOUR_OF_DAY, 0)
                     set(Calendar.MINUTE, 0)
@@ -890,7 +902,7 @@ fun DashboardScreen(
 
             val weeklyNdevVibPoints = List(7) { i ->
                 val offset = i - 6
-                val c = Calendar.getInstance().apply {
+                val c = WibDateUtils.getCalendar().apply {
                     add(Calendar.DAY_OF_YEAR, offset)
                     set(Calendar.HOUR_OF_DAY, 0)
                     set(Calendar.MINUTE, 0)
@@ -909,7 +921,7 @@ fun DashboardScreen(
 
             val weeklyBearingTempPoints = List(7) { i ->
                 val offset = i - 6
-                val c = Calendar.getInstance().apply {
+                val c = WibDateUtils.getCalendar().apply {
                     add(Calendar.DAY_OF_YEAR, offset)
                     set(Calendar.HOUR_OF_DAY, 0)
                     set(Calendar.MINUTE, 0)
@@ -928,7 +940,7 @@ fun DashboardScreen(
 
             val weeklyGreasingPoints = List(7) { i ->
                 val offset = i - 6
-                val c = Calendar.getInstance().apply {
+                val c = WibDateUtils.getCalendar().apply {
                     add(Calendar.DAY_OF_YEAR, offset)
                     set(Calendar.HOUR_OF_DAY, 0)
                     set(Calendar.MINUTE, 0)
@@ -1069,6 +1081,7 @@ fun DashboardScreen(
                                 "CRITICAL" -> BrandRed
                                 "WARNING" -> BrandOrange
                                 "STANDBY" -> Color.LightGray
+                                "UNMEASURED" -> Color(0xFF94A3B8)
                                 else -> BrandGreen
                             }
 
@@ -1103,14 +1116,19 @@ fun DashboardScreen(
                                         )
                                     }
 
+                                    val isZeroHarian = timeRangeSelection == 0 && !summary.isMeasuredToday
                                     Text(
-                                        text = if (unit.isRunning) "${String.format(Locale.US, "%.1f", summary.avgVib)} mm/s" else "Standby",
+                                        text = if (isZeroHarian) "0.0 mm/s"
+                                               else if (unit.isRunning) "${String.format(Locale.US, "%.1f", summary.avgVib)} mm/s" 
+                                               else "Standby",
                                         fontSize = 11.sp,
                                         fontWeight = FontWeight.Bold,
-                                        color = if (summary.alarmStatus == "NORMAL") SlateGrey else alarmColor
+                                        color = if (isZeroHarian || summary.alarmStatus == "NORMAL" || summary.alarmStatus == "UNMEASURED") SlateGrey else alarmColor
                                     )
                                     Text(
-                                        text = if (unit.isRunning) "${String.format(Locale.US, "%.1f", summary.avgTemp)} °C" else "-",
+                                        text = if (isZeroHarian) "0.0 °C"
+                                               else if (unit.isRunning) "${String.format(Locale.US, "%.1f", summary.avgTemp)} °C" 
+                                               else "-",
                                         fontSize = 9.sp,
                                         color = Color.DarkGray
                                     )
@@ -1143,7 +1161,15 @@ fun DashboardScreen(
                                         color = SlateGrey
                                     )
                                     val subtitleText = when (timeRangeSelection) {
-                                        0 -> "Hasil Pengukuran Harian (${SimpleDateFormat("dd MMMM yyyy", Locale("id", "ID")).format(Date())})"
+                                        0 -> {
+                                            if (isMeasuredToday && selectedUnitSummary.todayLogCount > 1) {
+                                                "Rata-Rata Pengukuran Harian (${selectedUnitSummary.todayLogCount}x Pengukuran)"
+                                            } else if (isMeasuredToday) {
+                                                "Hasil Pengukuran Harian (${WibDateUtils.format("dd MMMM yyyy", Date())})"
+                                            } else {
+                                                "Laporan Harian (${WibDateUtils.format("dd MMMM yyyy", Date())}) - Belum Diukur"
+                                            }
+                                        }
                                         1 -> "Rata-Rata Pengukuran Mingguan (7 Hari Terakhir)"
                                         else -> "Rata-Rata Pengukuran Bulanan (30 Hari Terakhir)"
                                     }
@@ -1154,7 +1180,7 @@ fun DashboardScreen(
                                     )
                                 }
 
-                                val hasValues = reportValues.dev != null
+                                val hasValues = if (timeRangeSelection == 0) isMeasuredToday else (reportValues.dev != null && (reportValues.dev ?: 0f) > 0f)
                                 val isAbnormal = hasValues && (
                                     (reportValues.dev ?: 0f) > 4.0f ||
                                     (reportValues.nde ?: 0f) > 4.0f ||
@@ -1262,7 +1288,11 @@ fun DashboardScreen(
                                     ) {
                                         Column(modifier = Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                                             Text(
-                                                text = "4. Catatan hasil observasi :",
+                                                text = if (selectedUnitSummary.todayLogCount > 1) {
+                                                    "4. Catatan hasil observasi (Rata-rata ${selectedUnitSummary.todayLogCount}x pengukuran) :"
+                                                } else {
+                                                    "4. Catatan hasil observasi :"
+                                                },
                                                 fontSize = 11.sp,
                                                 fontWeight = FontWeight.SemiBold,
                                                 color = SlateGrey
@@ -1279,7 +1309,7 @@ fun DashboardScreen(
                                                 horizontalArrangement = Arrangement.SpaceBetween
                                             ) {
                                                 Text(
-                                                    text = "Waktu: ${SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date(latestTodayLog.timestamp))} WIB",
+                                                    text = "Waktu terakhir: ${WibDateUtils.format("HH:mm", latestTodayLog.timestamp)} WIB",
                                                     fontSize = 10.sp,
                                                     color = Color.Gray
                                                 )
@@ -1311,7 +1341,7 @@ fun DashboardScreen(
                                                 Icon(Icons.Default.Info, contentDescription = null, tint = BrandOrange, modifier = Modifier.size(16.dp))
                                                 Spacer(modifier = Modifier.width(6.dp))
                                                 Text(
-                                                    text = "Hari ini belum diukur untuk ${selectedUnit.id}. Hasil pengukuran kosong.",
+                                                    text = "Hari ini belum dilakukan pengukuran untuk ${selectedUnit.id}. Seluruh nilai vibrasi dan temperatur bernilai 0.",
                                                     fontSize = 11.sp,
                                                     color = SlateGrey
                                                 )
@@ -1806,12 +1836,11 @@ fun DashboardScreen(
                             horizontalArrangement = Arrangement.SpaceBetween
                         ) {
                             if (timeRangeSelection == 1) {
-                                // Grafik Mingguan: 7 hari kebelakang (H-6 s/d Hari Ini)
-                                val dateSdf = SimpleDateFormat("dd/MM", Locale.US)
+                                // Grafik Mingguan: 7 hari kebelakang (H-6 s/d Hari Ini dalam WIB)
                                 val weeklyLabels = remember {
                                     List(7) { i ->
                                         val offsetDays = i - 6
-                                        val cal = Calendar.getInstance().apply {
+                                        val cal = WibDateUtils.getCalendar().apply {
                                             add(Calendar.DAY_OF_YEAR, offsetDays)
                                         }
                                         val dayName = when (cal.get(Calendar.DAY_OF_WEEK)) {
@@ -1824,7 +1853,7 @@ fun DashboardScreen(
                                             Calendar.SATURDAY -> "Sab"
                                             else -> ""
                                         }
-                                        val dateStr = dateSdf.format(cal.time)
+                                        val dateStr = WibDateUtils.format("dd/MM", cal.time)
                                         Pair(dayName, dateStr)
                                     }
                                 }
@@ -2090,13 +2119,13 @@ fun DashboardScreen(
 
                                 Column(horizontalAlignment = Alignment.End, modifier = Modifier.padding(start = 4.dp)) {
                                     Text(
-                                        text = SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date(log.timestamp)),
+                                        text = WibDateUtils.format("HH:mm", log.timestamp) + " WIB",
                                         fontSize = 11.sp,
                                         fontWeight = FontWeight.Bold,
                                         color = SlateGrey
                                     )
                                     Text(
-                                        text = SimpleDateFormat("dd MMM", Locale.getDefault()).format(Date(log.timestamp)),
+                                        text = WibDateUtils.format("dd MMM", log.timestamp),
                                         fontSize = 9.sp,
                                         color = Color.Gray
                                     )
@@ -2982,12 +3011,7 @@ fun ReportCiltView(ciltHistory: List<CiltCheck>) {
 
     val now = System.currentTimeMillis()
     val startOfToday = remember(now) {
-        Calendar.getInstance().apply {
-            set(Calendar.HOUR_OF_DAY, 0)
-            set(Calendar.MINUTE, 0)
-            set(Calendar.SECOND, 0)
-            set(Calendar.MILLISECOND, 0)
-        }.timeInMillis
+        WibDateUtils.getStartOfDay(now)
     }
 
     // Filter berdasarkan Periode (Harian, Mingguan, Bulanan)
@@ -3019,18 +3043,17 @@ fun ReportCiltView(ciltHistory: List<CiltCheck>) {
         }
     }
 
-    // Label range tanggal periode
+    // Label range tanggal periode WIB
     val periodDateRangeText = remember(selectedPeriod, now) {
-        val dateFormat = SimpleDateFormat("dd MMM yyyy", Locale.getDefault())
         when (selectedPeriod) {
-            "Harian" -> "Hari Ini • ${dateFormat.format(Date(now))}"
+            "Harian" -> "Hari Ini • ${WibDateUtils.format("dd MMM yyyy", now)}"
             "Mingguan" -> {
-                val weekStart = SimpleDateFormat("dd MMM", Locale.getDefault()).format(Date(now - 7L * 24 * 3600 * 1000L))
-                "7 Hari Terakhir • $weekStart - ${dateFormat.format(Date(now))}"
+                val weekStart = WibDateUtils.format("dd MMM", now - 7L * 24 * 3600 * 1000L)
+                "7 Hari Terakhir • $weekStart - ${WibDateUtils.format("dd MMM yyyy", now)}"
             }
             else -> {
-                val monthStart = SimpleDateFormat("dd MMM", Locale.getDefault()).format(Date(now - 30L * 24 * 3600 * 1000L))
-                "30 Hari Terakhir • $monthStart - ${dateFormat.format(Date(now))}"
+                val monthStart = WibDateUtils.format("dd MMM", now - 30L * 24 * 3600 * 1000L)
+                "30 Hari Terakhir • $monthStart - ${WibDateUtils.format("dd MMM yyyy", now)}"
             }
         }
     }
@@ -3612,7 +3635,7 @@ fun ReportCiltView(ciltHistory: List<CiltCheck>) {
                                         color = SlateGrey
                                     )
                                     Text(
-                                        text = "$shift • ${SimpleDateFormat("dd MMM yyyy, HH:mm", Locale.getDefault()).format(Date(check.timestamp))}",
+                                        text = "$shift • ${WibDateUtils.format("dd MMM yyyy, HH:mm", check.timestamp)} WIB",
                                         fontSize = 10.sp,
                                         color = Color.Gray
                                     )
@@ -4498,7 +4521,7 @@ fun DailyCiltForm(onSave: (CiltCheck) -> Unit, history: List<CiltCheck>) {
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Text(
-                                text = SimpleDateFormat("dd MMM yyyy, HH:mm", Locale.getDefault()).format(Date(check.timestamp)),
+                                text = WibDateUtils.format("dd MMM yyyy, HH:mm", check.timestamp) + " WIB",
                                 fontSize = 11.sp,
                                 color = Color.Gray
                             )
@@ -4697,7 +4720,7 @@ fun ReliabilityPmForm(onSave: (ReliabilityPmCheck) -> Unit, history: List<Reliab
                             color = BrandGreen
                         )
                         Text(
-                            text = SimpleDateFormat("dd MMM yyyy, HH:mm", Locale.getDefault()).format(Date(check.timestamp)),
+                            text = WibDateUtils.format("dd MMM yyyy, HH:mm", check.timestamp) + " WIB",
                             fontSize = 11.sp,
                             color = Color.Black
                         )
@@ -5052,7 +5075,7 @@ fun AbnormalityScreen(
         reports.filter { r ->
             val inPeriod = when (selectedPeriod) {
                 "Harian" -> {
-                    val cal = Calendar.getInstance()
+                    val cal = WibDateUtils.getCalendar()
                     cal.set(Calendar.HOUR_OF_DAY, 0)
                     cal.set(Calendar.MINUTE, 0)
                     cal.set(Calendar.SECOND, 0)
@@ -5688,7 +5711,7 @@ fun AbnormalityScreen(
                         Column {
                             Text(r.title, fontWeight = FontWeight.Bold, fontSize = 14.sp, color = SlateGrey)
                             Text(
-                                SimpleDateFormat("dd MMM yyyy", Locale.getDefault()).format(Date(r.timestamp)) + " • ${r.picName}",
+                                WibDateUtils.format("dd MMM yyyy", r.timestamp) + " WIB • ${r.picName}",
                                 fontSize = 10.sp,
                                 color = Color.Black
                             )
@@ -6393,7 +6416,7 @@ fun AbnormalityScreen(
                                 Column(modifier = Modifier.weight(1f)) {
                                     Text(r.title, fontWeight = FontWeight.Bold, fontSize = 13.sp, color = SlateGrey)
                                     Text(
-                                        SimpleDateFormat("dd MMM yyyy, HH:mm", Locale.getDefault()).format(Date(r.timestamp)),
+                                        WibDateUtils.format("dd MMM yyyy, HH:mm", r.timestamp) + " WIB",
                                         fontSize = 10.sp,
                                         color = Color.Black
                                     )
@@ -7535,7 +7558,7 @@ fun FlushingReportCard(
     val tasks = remember(log.itemsJson) { jsonToFlushingTasks(log.itemsJson) }
     val isPagi = log.shift == "Shift Pagi"
     val dateText = remember(log.timestamp) {
-        SimpleDateFormat("dd MMM yyyy, HH:mm", Locale("id", "ID")).format(Date(log.timestamp))
+        WibDateUtils.format("dd MMM yyyy, HH:mm", log.timestamp) + " WIB"
     }
 
     Card(

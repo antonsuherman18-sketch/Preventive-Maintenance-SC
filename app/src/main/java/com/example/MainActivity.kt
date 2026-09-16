@@ -12,9 +12,15 @@ import com.example.ui.CentrifugeViewModel
 import com.example.ui.CentrifugeViewModelFactory
 import com.example.ui.theme.MyApplicationTheme
 
+import java.util.TimeZone
+
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        
+        // Tetapkan Zona Waktu Default Aplikasi ke WIB (Waktu Indonesia Barat / UTC+7 / Asia/Jakarta)
+        TimeZone.setDefault(TimeZone.getTimeZone("Asia/Jakarta"))
+
         enableEdgeToEdge()
 
         // Initialize Room Database and Repository
