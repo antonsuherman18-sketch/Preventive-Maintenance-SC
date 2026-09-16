@@ -1005,24 +1005,24 @@ fun DashboardScreen(
                 Column(modifier = Modifier.padding(16.dp)) {
                     // Header
                     Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { showVibDialog = true },
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Column {
-                            Text(
-                                "Input Pengukuran Mesin Sludge Centrifuge",
-                                fontSize = 15.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = SlateGrey
-                            )
-                        }
                         IconButton(
                             onClick = { showVibDialog = true },
                             modifier = Modifier.testTag("add_vibration_log_button")
                         ) {
                             Icon(imageVector = Icons.Default.Add, contentDescription = "Log Manual", tint = BrandGreen)
                         }
+                        Text(
+                            text = "Input Pengukuran Mesin Sludge Centrifuge",
+                            fontSize = 15.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = SlateGrey,
+                            modifier = Modifier.weight(1f)
+                        )
                     }
 
                     Spacer(modifier = Modifier.height(12.dp))

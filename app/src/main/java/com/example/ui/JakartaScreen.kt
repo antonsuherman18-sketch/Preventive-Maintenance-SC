@@ -111,7 +111,7 @@ fun JakartaScreen(
                             passwordError = false
                         },
                         label = { Text("Password / PIN", color = Color(0xFF333333)) },
-                        placeholder = { Text("Default PIN: 6321", color = Color(0xFF666666)) },
+                        placeholder = { Text("Masukkan Password / PIN", color = Color(0xFF666666)) },
                         singleLine = true,
                         isError = passwordError,
                         textStyle = androidx.compose.ui.text.TextStyle(
@@ -141,7 +141,7 @@ fun JakartaScreen(
 
                     if (passwordError) {
                         Text(
-                            text = "Password salah! Silakan periksa kembali (Default PIN: 6321).",
+                            text = "Password salah! Silakan periksa kembali.",
                             color = Color(0xFFD32F2F),
                             fontSize = 11.sp,
                             fontWeight = FontWeight.Medium
@@ -179,13 +179,6 @@ fun JakartaScreen(
                             fontWeight = FontWeight.Bold
                         )
                     }
-
-                    Text(
-                        text = "Petunjuk Otorisasi: Gunakan PIN 6321",
-                        fontSize = 10.sp,
-                        color = Color.LightGray,
-                        textAlign = TextAlign.Center
-                    )
                 }
             }
         }
