@@ -28,15 +28,15 @@ class Repository(private val db: AppDatabase) {
     private val _isOnline = MutableStateFlow(false) // default offline as Berau mill is remote
     val isOnline: StateFlow<Boolean> = _isOnline
 
-    private val _syncStatus = MutableStateFlow("(Offline Mode) - Data disimpan di database lokal")
+    private val _syncStatus = MutableStateFlow("Data disimpan di database lokal")
     val syncStatus: StateFlow<String> = _syncStatus
 
     fun setOnlineMode(online: Boolean) {
         _isOnline.value = online
         if (online) {
-            _syncStatus.value = "Terhubung dengan Jakarta (Online Mode)"
+            _syncStatus.value = "Terhubung dengan Jakarta"
         } else {
-            _syncStatus.value = "(Offline Mode) - Data disimpan di database lokal"
+            _syncStatus.value = "Data disimpan di database lokal"
         }
     }
 
@@ -46,7 +46,7 @@ class Repository(private val db: AppDatabase) {
             return false
         }
 
-        _syncStatus.value = "Sedang sinkronisasi data dari Mill Berau ke Server Jakarta..."
+        _syncStatus.value = "Sedang sinkronisasi..."
         delay(2000) // Realistic network delay simulation for remote Kalimantan mill
 
         try {
@@ -58,7 +58,7 @@ class Repository(private val db: AppDatabase) {
             vibrationDao.markAllSynced()
             flushingDao.markAllSynced()
 
-            _syncStatus.value = "Sinkronisasi Berhasil! Seluruh data mill Berau telah terupdate di Server Jakarta."
+            _syncStatus.value = "Sinkronisasi Berhasil!"
             return true
         } catch (e: Exception) {
             Log.e("Repository", "Sync failed", e)

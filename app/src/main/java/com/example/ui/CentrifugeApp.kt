@@ -62,12 +62,12 @@ val BrandYellow = Color(0xFFFBC02D)
 val SlateGrey = Color(0xFF404848)
 val SoftBg = Color(0xFFF7F9F9)
 
-sealed class Screen(val route: String, val title: String, val icon: ImageVector) {
-    object Dashboard : Screen("dashboard", "Monitoring & Trend Analysis SC", Icons.Default.Analytics)
-    object Checklist : Screen("checklist", "CILT", Icons.Default.FactCheck)
-    object Abnormality : Screen("abnormality", "Reliability PM", Icons.Default.Build)
-    object Training : Screen("training", "Flushing", Icons.Default.WaterDrop)
-    object Jakarta : Screen("jakarta", "Report Center", Icons.Default.Assessment)
+sealed class Screen(val route: String, val title: String, val navTitle: String, val icon: ImageVector) {
+    object Dashboard : Screen("dashboard", "Monitoring & Trend Analysis SC", "Monitoring\n& Trend", Icons.Default.Analytics)
+    object Checklist : Screen("checklist", "CILT", "CILT", Icons.Default.FactCheck)
+    object Abnormality : Screen("abnormality", "Reliability PM", "Reliability\nPM", Icons.Default.Build)
+    object Training : Screen("training", "Flushing", "Flushing", Icons.Default.WaterDrop)
+    object Jakarta : Screen("jakarta", "Report Center", "Report\nCenter", Icons.Default.Assessment)
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -140,14 +140,6 @@ fun CentrifugeApp(viewModel: CentrifugeViewModel) {
                                 fontWeight = FontWeight.Bold,
                                 color = Color.White
                             )
-                            Spacer(modifier = Modifier.height(2.dp))
-                            Text(
-                                text = "Integrasi Monitoring Sludge Centrifuge - Autonomous CILT - Reliability Preventive Maintenance",
-                                fontSize = 10.sp,
-                                color = Color(0xFFCCE8E8),
-                                fontWeight = FontWeight.Medium,
-                                lineHeight = 13.sp
-                            )
                         }
                     }
                     
@@ -179,7 +171,7 @@ fun CentrifugeApp(viewModel: CentrifugeViewModel) {
                         }
                         Spacer(modifier = Modifier.height(2.dp))
                         Text(
-                            text = if (isOnline) "Synced to Jakarta" else "Berau Local Mode",
+                            text = if (isOnline) "Synced to Jakarta" else "Local Mode",
                             fontSize = 8.sp,
                             color = Color.White.copy(alpha = 0.7f),
                             fontWeight = FontWeight.Normal,
@@ -193,13 +185,13 @@ fun CentrifugeApp(viewModel: CentrifugeViewModel) {
             Surface(
                 modifier = Modifier.fillMaxWidth(),
                 color = Color.White,
-                shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp),
+                shape = RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp),
                 shadowElevation = 12.dp
             ) {
                 NavigationBar(
                     containerColor = Color.White,
                     tonalElevation = 0.dp,
-                    modifier = Modifier.height(76.dp)
+                    windowInsets = NavigationBarDefaults.windowInsets
                 ) {
                     val screens = listOf(
                         Screen.Dashboard,
@@ -213,29 +205,32 @@ fun CentrifugeApp(viewModel: CentrifugeViewModel) {
                         NavigationBarItem(
                             selected = selected,
                             onClick = { currentScreen = screen },
+                            alwaysShowLabel = true,
                             label = { 
                                 Text(
-                                    text = screen.title, 
+                                    text = screen.navTitle, 
                                     fontSize = 9.sp, 
                                     lineHeight = 11.sp,
                                     textAlign = TextAlign.Center,
                                     maxLines = 2,
+                                    minLines = 2,
                                     overflow = TextOverflow.Ellipsis,
-                                    fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal
+                                    fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium
                                 ) 
                             },
                             icon = {
                                 Icon(
                                     imageVector = screen.icon,
-                                    contentDescription = screen.title
+                                    contentDescription = screen.title,
+                                    modifier = Modifier.size(22.dp)
                                 )
                             },
                             colors = NavigationBarItemDefaults.colors(
                                 selectedIconColor = BrandGreen,
                                 selectedTextColor = BrandGreen,
                                 indicatorColor = BrandGreenLight,
-                                unselectedIconColor = Color.DarkGray,
-                                unselectedTextColor = Color.DarkGray
+                                unselectedIconColor = Color(0xFF555555),
+                                unselectedTextColor = Color(0xFF555555)
                             ),
                             modifier = Modifier.testTag("nav_item_${screen.route}")
                         )
@@ -270,7 +265,7 @@ fun CentrifugeApp(viewModel: CentrifugeViewModel) {
                         modifier = Modifier
                             .weight(1f)
                             .padding(end = 8.dp),
-                        verticalArrangement = Arrangement.spacedBy(3.dp)
+                        verticalArrangement = Arrangement.spacedBy(1.dp)
                     ) {
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
@@ -295,12 +290,16 @@ fun CentrifugeApp(viewModel: CentrifugeViewModel) {
                         ) {
                             Box(
                                 modifier = Modifier
-                                    .size(6.dp)
+                                    .size(5.dp)
                                     .clip(CircleShape)
                                     .background(if (isOnline) Color(0xFF4ADE80) else Color(0xFF94A3B8))
                             )
                             Text(
-                                text = syncStatus,
+                                text = syncStatus
+                                    .replace("(Offline Mode) - ", "")
+                                    .replace("(Offline Mode)", "")
+                                    .replace("(Online Mode)", "")
+                                    .trim(),
                                 color = Color.White.copy(alpha = 0.85f),
                                 fontSize = 10.sp,
                                 fontWeight = FontWeight.Normal
@@ -318,19 +317,31 @@ fun CentrifugeApp(viewModel: CentrifugeViewModel) {
                             }
                         },
                         colors = ButtonDefaults.buttonColors(containerColor = if (isOnline) BrandYellow else Color.Gray),
-                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp),
+                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
+                        shape = RoundedCornerShape(8.dp),
                         modifier = Modifier
-                            .height(28.dp)
                             .testTag("sync_button")
                     ) {
-                        Icon(
-                            imageVector = Icons.Default.Sync,
-                            contentDescription = "Sync",
-                            tint = Color.Black,
-                            modifier = Modifier.size(14.dp)
-                        )
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Text("Kirim ke Jakarta", color = Color.Black, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.Center
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Sync,
+                                contentDescription = "Sync",
+                                tint = Color.Black,
+                                modifier = Modifier.size(14.dp)
+                            )
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text(
+                                text = "Kirim ke\nJakarta",
+                                color = Color.Black,
+                                fontSize = 9.sp,
+                                fontWeight = FontWeight.Bold,
+                                lineHeight = 11.sp,
+                                textAlign = TextAlign.Center
+                            )
+                        }
                     }
                 }
             }
@@ -436,9 +447,63 @@ data class UnitSummaryMetrics(
     val todayLogCount: Int = 0
 )
 
+data class MonthlyWeekInterval(
+    val index: Int,
+    val title: String,
+    val shortTitle: String,
+    val dateRangeStr: String,
+    val startMillis: Long,
+    val endMillis: Long
+)
+
+fun getMonthlyWeekIntervals(): List<MonthlyWeekInterval> {
+    return List(4) { i ->
+        val startOffset = when (i) {
+            0 -> -27
+            1 -> -20
+            2 -> -13
+            else -> -6
+        }
+        val endOffset = when (i) {
+            0 -> -21
+            1 -> -14
+            2 -> -7
+            else -> 0
+        }
+        val calStart = WibDateUtils.getCalendar().apply {
+            add(Calendar.DAY_OF_YEAR, startOffset)
+            set(Calendar.HOUR_OF_DAY, 0)
+            set(Calendar.MINUTE, 0)
+            set(Calendar.SECOND, 0)
+            set(Calendar.MILLISECOND, 0)
+        }
+        val calEnd = WibDateUtils.getCalendar().apply {
+            add(Calendar.DAY_OF_YEAR, endOffset)
+            set(Calendar.HOUR_OF_DAY, 23)
+            set(Calendar.MINUTE, 59)
+            set(Calendar.SECOND, 59)
+            set(Calendar.MILLISECOND, 999)
+        }
+        val weekTitle = when (i) {
+            0 -> "3 Mg Lalu"
+            1 -> "2 Mg Lalu"
+            2 -> "1 Mg Lalu"
+            else -> "Minggu Ini"
+        }
+        val shortTitle = when (i) {
+            0 -> "Minggu 1"
+            1 -> "Minggu 2"
+            2 -> "Minggu 3"
+            else -> "Minggu Ini"
+        }
+        val dateRangeStr = "${WibDateUtils.format("dd/MM", calStart.time)} - ${WibDateUtils.format("dd/MM", calEnd.time)}"
+        MonthlyWeekInterval(i, weekTitle, shortTitle, dateRangeStr, calStart.timeInMillis, calEnd.timeInMillis)
+    }
+}
+
 fun getUnitSummaryMetrics(
     unit: CentrifugeUnitState,
-    timeRangeSelection: Int, // 0: Harian, 1: Mingguan, 2: Bulanan
+    timeRangeSelection: Int, // 0: Hari Ini, 1: Seminggu, 2: Sebulan
     vibrationLogs: List<VibrationLog>
 ): UnitSummaryMetrics {
     val now = WibDateUtils.getCalendar()
@@ -453,13 +518,23 @@ fun getUnitSummaryMetrics(
     }
     val startOfToday = cal.timeInMillis
     val endOfToday = startOfToday + 24 * 60 * 60 * 1000L
+
+    val calMidnight = WibDateUtils.getCalendar().apply {
+        set(Calendar.HOUR_OF_DAY, 0)
+        set(Calendar.MINUTE, 0)
+        set(Calendar.SECOND, 0)
+        set(Calendar.MILLISECOND, 0)
+    }
+    val startOfMidnight = calMidnight.timeInMillis
+    val endOfMidnight = startOfMidnight + 24 * 60 * 60 * 1000L
+
     val sevenDaysAgo = System.currentTimeMillis() - 7L * 24 * 60 * 60 * 1000L
     val thirtyDaysAgo = System.currentTimeMillis() - 30L * 24 * 60 * 60 * 1000L
 
     val unitLogs = vibrationLogs.filter { log ->
-        log.comments.contains("[${unit.id}]") || log.comments.contains(unit.id)
+        log.comments.contains("[${unit.id}]") || log.comments.contains(unit.id) || log.comments.contains(unit.id.replace("-", " "))
     }
-    val todayLogs = unitLogs.filter { it.timestamp in startOfToday..endOfToday }
+    val todayLogs = unitLogs.filter { (it.timestamp in startOfToday..endOfToday) || (it.timestamp in startOfMidnight..endOfMidnight) }
     val isMeasuredToday = todayLogs.isNotEmpty()
     val latestTodayLog = todayLogs.maxByOrNull { it.timestamp }
     val weeklyLogs = unitLogs.filter { it.timestamp >= sevenDaysAgo }
@@ -519,7 +594,7 @@ fun getUnitSummaryMetrics(
                 avgTemp = 0.0f
             }
         }
-        1 -> { // Mingguan
+        1 -> { // Seminggu (7 Hari Terakhir)
             if (weeklyLogs.isNotEmpty()) {
                 val deAvg = weeklyLogs.map { it.driveEndVibration }.average().toFloat()
                 val ndeAvg = weeklyLogs.map { it.nonDriveEndVibration }.average().toFloat()
@@ -576,7 +651,7 @@ fun getUnitSummaryMetrics(
                 avgTemp = 0.0f
             }
         }
-        else -> { // Bulanan
+        else -> { // Sebulan (30 Hari Terakhir)
             if (monthlyLogs.isNotEmpty()) {
                 val deAvg = monthlyLogs.map { it.driveEndVibration }.average().toFloat()
                 val ndeAvg = monthlyLogs.map { it.nonDriveEndVibration }.average().toFloat()
@@ -783,7 +858,7 @@ fun DashboardScreen(
     val context = LocalContext.current
     var selectedUnitIndex by remember { mutableStateOf(0) } // Default to SC-01 (index 0)
     var trendTabSelection by remember { mutableStateOf(0) } // 0: Vibrasi (mm/s), 1: Suhu (°C)
-    var timeRangeSelection by remember { mutableStateOf(0) } // 0: Harian, 1: Mingguan, 2: Bulanan
+    var timeRangeSelection by remember { mutableStateOf(0) } // 0: Harian, 1: Seminggu, 2: Sebulan
 
     var unitsState by remember {
         mutableStateOf(
@@ -877,10 +952,45 @@ fun DashboardScreen(
     ) {
         // Live Vibrations Trends & Temperature (Slide 21 and 26) - Expanded for 8 Sludge Centrifuge units
         item {
-            val unitWeeklyLogs = vibrationLogs.filter { log ->
-                log.comments.contains("[${selectedUnit.id}]") || log.comments.contains(selectedUnit.id)
+            val unitAllLogs = vibrationLogs.filter { log ->
+                log.comments.contains("[${selectedUnit.id}]") || 
+                log.comments.contains(selectedUnit.id) ||
+                log.comments.contains(selectedUnit.id.replace("-", " "))
             }
 
+            val now = WibDateUtils.getCalendar()
+            val calToday = WibDateUtils.getCalendar().apply {
+                if (now.get(Calendar.HOUR_OF_DAY) < 7) {
+                    add(Calendar.DAY_OF_YEAR, -1)
+                }
+                set(Calendar.HOUR_OF_DAY, 7)
+                set(Calendar.MINUTE, 0)
+                set(Calendar.SECOND, 0)
+                set(Calendar.MILLISECOND, 0)
+            }
+            val startOfToday = calToday.timeInMillis
+            val endOfToday = startOfToday + 24 * 60 * 60 * 1000L
+
+            val calMidnight = WibDateUtils.getCalendar().apply {
+                set(Calendar.HOUR_OF_DAY, 0)
+                set(Calendar.MINUTE, 0)
+                set(Calendar.SECOND, 0)
+                set(Calendar.MILLISECOND, 0)
+            }
+            val startOfMidnight = calMidnight.timeInMillis
+            val endOfMidnight = startOfMidnight + 24 * 60 * 60 * 1000L
+
+            // 1. DATA HARIAN: Hanya data di hari itu saja yang sudah di-input
+            val todayUnitLogs = unitAllLogs.filter { 
+                (it.timestamp in startOfToday..endOfToday) || (it.timestamp in startOfMidnight..endOfMidnight)
+            }.sortedBy { it.timestamp }
+
+            val dailyDevVibPoints = todayUnitLogs.map { it.driveEndVibration }
+            val dailyNdevVibPoints = todayUnitLogs.map { it.nonDriveEndVibration }
+            val dailyBearingTempPoints = todayUnitLogs.map { it.bearingTemp }
+            val dailyGreasingPoints = todayUnitLogs.map { if (it.isGreased) 100f else 0f }
+
+            // 2. DATA SEMINGGU (7 hari kebelakang: H-6 s/d Hari Ini)
             val weeklyDevVibPoints = List(7) { i ->
                 val offset = i - 6
                 val c = WibDateUtils.getCalendar().apply {
@@ -892,7 +1002,7 @@ fun DashboardScreen(
                 }
                 val s = c.timeInMillis
                 val e = s + 24 * 60 * 60 * 1000L
-                val logsOnDay = unitWeeklyLogs.filter { it.timestamp in s..e }
+                val logsOnDay = unitAllLogs.filter { it.timestamp in s..e }
                 if (logsOnDay.isNotEmpty()) {
                     logsOnDay.map { it.driveEndVibration }.average().toFloat()
                 } else {
@@ -911,7 +1021,7 @@ fun DashboardScreen(
                 }
                 val s = c.timeInMillis
                 val e = s + 24 * 60 * 60 * 1000L
-                val logsOnDay = unitWeeklyLogs.filter { it.timestamp in s..e }
+                val logsOnDay = unitAllLogs.filter { it.timestamp in s..e }
                 if (logsOnDay.isNotEmpty()) {
                     logsOnDay.map { it.nonDriveEndVibration }.average().toFloat()
                 } else {
@@ -930,7 +1040,7 @@ fun DashboardScreen(
                 }
                 val s = c.timeInMillis
                 val e = s + 24 * 60 * 60 * 1000L
-                val logsOnDay = unitWeeklyLogs.filter { it.timestamp in s..e }
+                val logsOnDay = unitAllLogs.filter { it.timestamp in s..e }
                 if (logsOnDay.isNotEmpty()) {
                     logsOnDay.map { it.bearingTemp }.average().toFloat()
                 } else {
@@ -949,7 +1059,7 @@ fun DashboardScreen(
                 }
                 val s = c.timeInMillis
                 val e = s + 24 * 60 * 60 * 1000L
-                val logsOnDay = unitWeeklyLogs.filter { it.timestamp in s..e }
+                val logsOnDay = unitAllLogs.filter { it.timestamp in s..e }
                 if (logsOnDay.isNotEmpty()) {
                     if (logsOnDay.any { it.isGreased }) 100f else 0f
                 } else {
@@ -957,32 +1067,76 @@ fun DashboardScreen(
                 }
             }
 
-            // Get data lists based on time range selection
+            // 3. DATA SEBULAN (Rata-rata per minggu kebelakang: 4 Minggu Kebelakang)
+            val monthlyWeekIntervals = remember { getMonthlyWeekIntervals() }
+
+            val monthlyDevVibPoints = List(4) { i ->
+                val w = monthlyWeekIntervals[i]
+                val logsInWeek = unitAllLogs.filter { it.timestamp in w.startMillis..w.endMillis }
+                if (logsInWeek.isNotEmpty()) {
+                    logsInWeek.map { it.driveEndVibration }.average().toFloat()
+                } else {
+                    val base = selectedUnit.baseDeVib
+                    val variation = kotlin.math.sin(i * 0.75f) * 0.18f
+                    (base + variation).toFloat().coerceAtLeast(0.1f)
+                }
+            }
+
+            val monthlyNdevVibPoints = List(4) { i ->
+                val w = monthlyWeekIntervals[i]
+                val logsInWeek = unitAllLogs.filter { it.timestamp in w.startMillis..w.endMillis }
+                if (logsInWeek.isNotEmpty()) {
+                    logsInWeek.map { it.nonDriveEndVibration }.average().toFloat()
+                } else {
+                    val base = selectedUnit.baseNdeVib
+                    val variation = kotlin.math.cos(i * 0.75f) * 0.14f
+                    (base + variation).toFloat().coerceAtLeast(0.1f)
+                }
+            }
+
+            val monthlyBearingTempPoints = List(4) { i ->
+                val w = monthlyWeekIntervals[i]
+                val logsInWeek = unitAllLogs.filter { it.timestamp in w.startMillis..w.endMillis }
+                if (logsInWeek.isNotEmpty()) {
+                    logsInWeek.map { it.bearingTemp }.average().toFloat()
+                } else {
+                    val base = selectedUnit.baseBearingTemp
+                    val variation = kotlin.math.sin(i * 0.65f) * 1.2f
+                    (base + variation).toFloat().coerceAtLeast(20.0f)
+                }
+            }
+
+            val monthlyGreasingPoints = List(4) { i ->
+                val w = monthlyWeekIntervals[i]
+                val logsInWeek = unitAllLogs.filter { it.timestamp in w.startMillis..w.endMillis }
+                if (logsInWeek.isNotEmpty()) {
+                    val greasedCount = logsInWeek.count { it.isGreased }
+                    (greasedCount.toFloat() / logsInWeek.size) * 100f
+                } else {
+                    if (selectedUnit.isRunning) 100f else 0f
+                }
+            }
+
+            // Get data lists based on time range selection (0: Hari Ini, 1: Seminggu, 2: Sebulan)
             val devVibPoints = when (timeRangeSelection) {
-                0 -> selectedUnit.devVibHistory
+                0 -> dailyDevVibPoints
                 1 -> weeklyDevVibPoints
-                else -> selectedUnit.monthlyDevVibHistory
+                else -> monthlyDevVibPoints
             }
             val ndevVibPoints = when (timeRangeSelection) {
-                0 -> selectedUnit.ndevVibHistory
+                0 -> dailyNdevVibPoints
                 1 -> weeklyNdevVibPoints
-                else -> selectedUnit.monthlyNdevVibHistory
+                else -> monthlyNdevVibPoints
             }
             val bearingTempPoints = when (timeRangeSelection) {
-                0 -> selectedUnit.bearingTempHistory
+                0 -> dailyBearingTempPoints
                 1 -> weeklyBearingTempPoints
-                else -> selectedUnit.monthlyBearingTempHistory
+                else -> monthlyBearingTempPoints
             }
             val greasingPoints = when (timeRangeSelection) {
-                0 -> {
-                    if (selectedUnit.greasingHistory.isNotEmpty()) selectedUnit.greasingHistory
-                    else List(12) { if (selectedUnit.isRunning) 100f else 0f }
-                }
+                0 -> dailyGreasingPoints
                 1 -> weeklyGreasingPoints
-                else -> {
-                    if (selectedUnit.monthlyGreasingHistory.isNotEmpty()) selectedUnit.monthlyGreasingHistory
-                    else List(12) { if (selectedUnit.isRunning) 100f else 0f }
-                }
+                else -> monthlyGreasingPoints
             }
 
             val currentDev = devVibPoints.lastOrNull() ?: selectedUnit.baseDeVib
@@ -1027,7 +1181,7 @@ fun DashboardScreen(
 
                     Spacer(modifier = Modifier.height(12.dp))
 
-                    // Pilihan Periode Report (Harian | Mingguan | Bulanan) - DI ATAS "Pilih Unit Mesin"
+                    // Pilihan Periode Report (Hari Ini | Seminggu | Sebulan) - DI ATAS "Pilih Unit Mesin"
                     Text("Pilihan Periode Report:", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = SlateGrey)
                     Spacer(modifier = Modifier.height(4.dp))
                     Row(
@@ -1038,7 +1192,7 @@ fun DashboardScreen(
                             .padding(2.dp),
                         horizontalArrangement = Arrangement.spacedBy(4.dp)
                     ) {
-                        listOf("Harian", "Mingguan", "Bulanan").forEachIndexed { index, label ->
+                        listOf("Hari Ini", "Seminggu", "Sebulan").forEachIndexed { index, label ->
                             val isSelected = timeRangeSelection == index
                             Box(
                                 modifier = Modifier
@@ -1116,17 +1270,17 @@ fun DashboardScreen(
                                         )
                                     }
 
-                                    val isZeroHarian = timeRangeSelection == 0 && !summary.isMeasuredToday
+                                    val isZeroHariIni = timeRangeSelection == 0 && !summary.isMeasuredToday
                                     Text(
-                                        text = if (isZeroHarian) "0.0 mm/s"
+                                        text = if (isZeroHariIni) "0.0 mm/s"
                                                else if (unit.isRunning) "${String.format(Locale.US, "%.1f", summary.avgVib)} mm/s" 
                                                else "Standby",
                                         fontSize = 11.sp,
                                         fontWeight = FontWeight.Bold,
-                                        color = if (isZeroHarian || summary.alarmStatus == "NORMAL" || summary.alarmStatus == "UNMEASURED") SlateGrey else alarmColor
+                                        color = if (isZeroHariIni || summary.alarmStatus == "NORMAL" || summary.alarmStatus == "UNMEASURED") SlateGrey else alarmColor
                                     )
                                     Text(
-                                        text = if (isZeroHarian) "0.0 °C"
+                                        text = if (isZeroHariIni) "0.0 °C"
                                                else if (unit.isRunning) "${String.format(Locale.US, "%.1f", summary.avgTemp)} °C" 
                                                else "-",
                                         fontSize = 9.sp,
@@ -1163,15 +1317,15 @@ fun DashboardScreen(
                                     val subtitleText = when (timeRangeSelection) {
                                         0 -> {
                                             if (isMeasuredToday && selectedUnitSummary.todayLogCount > 1) {
-                                                "Rata-Rata Pengukuran Harian (${selectedUnitSummary.todayLogCount}x Pengukuran)"
+                                                "Rata-Rata Pengukuran Hari Ini (${selectedUnitSummary.todayLogCount}x Pengukuran)"
                                             } else if (isMeasuredToday) {
-                                                "Hasil Pengukuran Harian (${WibDateUtils.format("dd MMMM yyyy", Date())})"
+                                                "Hasil Pengukuran Hari Ini (${WibDateUtils.format("dd MMMM yyyy", Date())})"
                                             } else {
-                                                "Laporan Harian (${WibDateUtils.format("dd MMMM yyyy", Date())}) - Belum Diukur"
+                                                "Laporan Hari Ini (${WibDateUtils.format("dd MMMM yyyy", Date())}) - Belum Diukur"
                                             }
                                         }
-                                        1 -> "Rata-Rata Pengukuran Mingguan (7 Hari Terakhir)"
-                                        else -> "Rata-Rata Pengukuran Bulanan (30 Hari Terakhir)"
+                                        1 -> "Rata-Rata Pengukuran Seminggu (7 Hari Terakhir)"
+                                        else -> "Rata-Rata Pengukuran Sebulan (Per Minggu Kebelakang)"
                                     }
                                     Text(
                                         text = subtitleText,
@@ -1380,7 +1534,11 @@ fun DashboardScreen(
                             ) {
                                 Box(modifier = Modifier.size(6.dp).background(if (selectedUnit.isRunning) BrandGreen else Color.LightGray, CircleShape))
                                 Text(
-                                    text = if (selectedUnit.isRunning) "Mesin Beroperasi" else "Standby Mode",
+                                    text = (if (selectedUnit.isRunning) "Mesin Beroperasi" else "Standby Mode") + " • " + when (timeRangeSelection) {
+                                        0 -> "Periode Hari Ini"
+                                        1 -> "Periode Seminggu"
+                                        else -> "Periode Sebulan (Rata-rata Perminggu)"
+                                    },
                                     fontSize = 10.sp,
                                     color = Color.DarkGray
                                 )
@@ -1477,7 +1635,10 @@ fun DashboardScreen(
                                 val width = size.width
                                 val height = size.height
                                 val points = historyPoints.size
-                                val spacing = width / (points - 1).coerceAtLeast(1)
+                                val spacing = if (points > 1) width / (points - 1) else 0f
+                                val getX: (Int) -> Float = { idx ->
+                                    if (points <= 1) width / 2f else idx * spacing
+                                }
 
                                 if (trendTabSelection == 0) {
                                     // Vibration Chart (Max 10 mm/s)
@@ -1504,9 +1665,9 @@ fun DashboardScreen(
                                     for (index in 1 until devVibPoints.size) {
                                         val prevVib = devVibPoints[index - 1]
                                         val currVib = devVibPoints[index]
-                                        val prevX = (index - 1) * spacing
+                                        val prevX = getX(index - 1)
                                         val prevY = (height - (prevVib / maxScale).coerceIn(0f, 1f) * height).coerceIn(16f, height - 16f)
-                                        val currX = index * spacing
+                                        val currX = getX(index)
                                         val currY = (height - (currVib / maxScale).coerceIn(0f, 1f) * height).coerceIn(16f, height - 16f)
 
                                         val isSegCritical = currVib >= selectedUnit.criticalVib || prevVib >= selectedUnit.criticalVib
@@ -1525,7 +1686,7 @@ fun DashboardScreen(
 
                                     // Plot DE Vibration Dots
                                     devVibPoints.forEachIndexed { index, valVib ->
-                                        val x = index * spacing
+                                        val x = getX(index)
                                         val y = (height - (valVib / maxScale).coerceIn(0f, 1f) * height).coerceIn(16f, height - 16f)
                                         val isCritical = valVib >= selectedUnit.criticalVib
                                         val isWarning = valVib >= selectedUnit.warningVib
@@ -1550,9 +1711,9 @@ fun DashboardScreen(
                                     for (index in 1 until ndevVibPoints.size) {
                                         val prevVib = ndevVibPoints[index - 1]
                                         val currVib = ndevVibPoints[index]
-                                        val prevX = (index - 1) * spacing
+                                        val prevX = getX(index - 1)
                                         val prevY = (height - (prevVib / maxScale).coerceIn(0f, 1f) * height).coerceIn(16f, height - 16f)
-                                        val currX = index * spacing
+                                        val currX = getX(index)
                                         val currY = (height - (currVib / maxScale).coerceIn(0f, 1f) * height).coerceIn(16f, height - 16f)
 
                                         val isCritical = currVib >= selectedUnit.criticalVib || prevVib >= selectedUnit.criticalVib
@@ -1572,7 +1733,7 @@ fun DashboardScreen(
                                     drawIntoCanvas { canvas ->
                                         val paintCritical = Paint().apply {
                                             color = android.graphics.Color.rgb(186, 26, 26) // BrandRed
-                                            textSize = 25f
+                                             textSize = 25f
                                             typeface = Typeface.DEFAULT_BOLD
                                             textAlign = Paint.Align.CENTER
                                             isAntiAlias = true
@@ -1600,7 +1761,7 @@ fun DashboardScreen(
                                         }
 
                                         devVibPoints.forEachIndexed { index, valVib ->
-                                            val x = index * spacing
+                                            val x = getX(index)
                                             val yDe = (height - (valVib / maxScale).coerceIn(0f, 1f) * height).coerceIn(16f, height - 16f)
                                             val labelDe = String.format(Locale.US, "%.1f", valVib)
                                             val p = if (valVib >= selectedUnit.criticalVib) paintCritical else if (valVib >= selectedUnit.warningVib) paintWarning else paintDe
@@ -1608,7 +1769,7 @@ fun DashboardScreen(
                                         }
 
                                         ndevVibPoints.forEachIndexed { index, valNde ->
-                                            val x = index * spacing
+                                            val x = getX(index)
                                             val yNde = (height - (valNde / maxScale).coerceIn(0f, 1f) * height).coerceIn(16f, height - 16f)
                                             val labelNde = String.format(Locale.US, "%.1f", valNde)
                                             val p = if (valNde >= selectedUnit.criticalVib) paintCritical else paintNde
@@ -1640,9 +1801,9 @@ fun DashboardScreen(
                                     for (index in 1 until bearingTempPoints.size) {
                                         val prevTemp = bearingTempPoints[index - 1]
                                         val currTemp = bearingTempPoints[index]
-                                        val prevX = (index - 1) * spacing
+                                        val prevX = getX(index - 1)
                                         val prevY = (height - (prevTemp / maxScale).coerceIn(0f, 1f) * height).coerceIn(16f, height - 16f)
-                                        val currX = index * spacing
+                                        val currX = getX(index)
                                         val currY = (height - (currTemp / maxScale).coerceIn(0f, 1f) * height).coerceIn(16f, height - 16f)
 
                                         val isSegCritical = currTemp >= selectedUnit.criticalTemp || prevTemp >= selectedUnit.criticalTemp
@@ -1661,7 +1822,7 @@ fun DashboardScreen(
 
                                     // Plot Bearing Temp Dots
                                     bearingTempPoints.forEachIndexed { index, valTemp ->
-                                        val x = index * spacing
+                                        val x = getX(index)
                                         val y = (height - (valTemp / maxScale).coerceIn(0f, 1f) * height).coerceIn(16f, height - 16f)
                                         val isCritical = valTemp >= selectedUnit.criticalTemp
                                         val isWarning = valTemp >= selectedUnit.warningTemp
@@ -1707,7 +1868,7 @@ fun DashboardScreen(
                                         }
 
                                         bearingTempPoints.forEachIndexed { index, valTemp ->
-                                            val x = index * spacing
+                                            val x = getX(index)
                                             val y = (height - (valTemp / maxScale).coerceIn(0f, 1f) * height).coerceIn(16f, height - 16f)
                                             val labelTemp = "${String.format(Locale.US, "%.1f", valTemp)}°"
                                             val p = if (valTemp >= selectedUnit.criticalTemp) paintTempCritical else if (valTemp >= selectedUnit.warningTemp) paintTempWarning else paintTempNormal
@@ -1739,9 +1900,9 @@ fun DashboardScreen(
                                     for (index in 1 until greasingPoints.size) {
                                         val prevGreas = greasingPoints[index - 1]
                                         val currGreas = greasingPoints[index]
-                                        val prevX = (index - 1) * spacing
+                                        val prevX = getX(index - 1)
                                         val prevY = (height - (prevGreas / maxScale).coerceIn(0f, 1f) * height).coerceIn(16f, height - 16f)
-                                        val currX = index * spacing
+                                        val currX = getX(index)
                                         val currY = (height - (currGreas / maxScale).coerceIn(0f, 1f) * height).coerceIn(16f, height - 16f)
 
                                         val isSegCritical = currGreas < 50f || prevGreas < 50f
@@ -1759,7 +1920,7 @@ fun DashboardScreen(
 
                                     // Plot Greasing Dots and vertical pillars
                                     greasingPoints.forEachIndexed { index, valGreas ->
-                                        val x = index * spacing
+                                        val x = getX(index)
                                         val y = (height - (valGreas / maxScale).coerceIn(0f, 1f) * height).coerceIn(16f, height - 16f)
                                         val isCritical = valGreas < 50f
                                         val dotColor = if (isCritical) BrandRed else BrandGreen
@@ -1806,10 +1967,14 @@ fun DashboardScreen(
                                         }
 
                                         greasingPoints.forEachIndexed { index, valGreas ->
-                                            val x = index * spacing
+                                            val x = getX(index)
                                             val y = (height - (valGreas / maxScale).coerceIn(0f, 1f) * height).coerceIn(16f, height - 16f)
                                             val isCritical = valGreas < 50f
-                                            val labelGreas = if (isCritical) "0% Belum" else "100% OK"
+                                            val labelGreas = if (timeRangeSelection == 2) {
+                                                if (valGreas >= 50f) "${valGreas.toInt()}% OK" else "${valGreas.toInt()}%"
+                                            } else {
+                                                if (isCritical) "0% Belum" else "100% OK"
+                                            }
                                             val p = if (isCritical) paintGreasCritical else paintGreasNormal
                                             canvas.nativeCanvas.drawText(labelGreas, x, (y - 10f).coerceAtLeast(20f), p)
                                         }
@@ -1829,63 +1994,110 @@ fun DashboardScreen(
                             }
                         }
 
-                        // X-axis Time Labels with Dates for Weekly View
+                        // X-axis Time / Date Labels
                         Spacer(modifier = Modifier.height(4.dp))
                         Row(
                             modifier = Modifier.fillMaxWidth().padding(horizontal = 4.dp),
                             horizontalArrangement = Arrangement.SpaceBetween
                         ) {
-                            if (timeRangeSelection == 1) {
-                                // Grafik Mingguan: 7 hari kebelakang (H-6 s/d Hari Ini dalam WIB)
-                                val weeklyLabels = remember {
-                                    List(7) { i ->
-                                        val offsetDays = i - 6
-                                        val cal = WibDateUtils.getCalendar().apply {
-                                            add(Calendar.DAY_OF_YEAR, offsetDays)
+                            when (timeRangeSelection) {
+                                0 -> {
+                                    // Hari Ini: Menampilkan waktu input di hari ini
+                                    if (todayUnitLogs.isNotEmpty()) {
+                                        if (todayUnitLogs.size == 1) {
+                                            Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+                                                Text(
+                                                    text = "Pengukuran: ${WibDateUtils.format("HH:mm", todayUnitLogs[0].timestamp)} WIB (Hari Ini)",
+                                                    fontSize = 9.sp,
+                                                    color = SlateGrey,
+                                                    fontWeight = FontWeight.Bold
+                                                )
+                                            }
+                                        } else {
+                                            todayUnitLogs.forEachIndexed { idx, log ->
+                                                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                                    Text(
+                                                        text = "Input #${idx + 1}",
+                                                        fontSize = 8.5.sp,
+                                                        color = SlateGrey,
+                                                        fontWeight = FontWeight.Bold
+                                                    )
+                                                    Text(
+                                                        text = "${WibDateUtils.format("HH:mm", log.timestamp)} WIB",
+                                                        fontSize = 8.sp,
+                                                        color = Color.Gray
+                                                    )
+                                                }
+                                            }
                                         }
-                                        val dayName = when (cal.get(Calendar.DAY_OF_WEEK)) {
-                                            Calendar.SUNDAY -> "Min"
-                                            Calendar.MONDAY -> "Sen"
-                                            Calendar.TUESDAY -> "Sel"
-                                            Calendar.WEDNESDAY -> "Rab"
-                                            Calendar.THURSDAY -> "Kam"
-                                            Calendar.FRIDAY -> "Jum"
-                                            Calendar.SATURDAY -> "Sab"
-                                            else -> ""
-                                        }
-                                        val dateStr = WibDateUtils.format("dd/MM", cal.time)
-                                        Pair(dayName, dateStr)
                                     }
                                 }
+                                1 -> {
+                                    // Seminggu: 7 hari kebelakang (H-6 s/d Hari Ini dalam WIB)
+                                    val weeklyLabels = remember {
+                                        List(7) { i ->
+                                            val offsetDays = i - 6
+                                            val cal = WibDateUtils.getCalendar().apply {
+                                                add(Calendar.DAY_OF_YEAR, offsetDays)
+                                            }
+                                            val dayName = when (cal.get(Calendar.DAY_OF_WEEK)) {
+                                                Calendar.SUNDAY -> "Min"
+                                                Calendar.MONDAY -> "Sen"
+                                                Calendar.TUESDAY -> "Sel"
+                                                Calendar.WEDNESDAY -> "Rab"
+                                                Calendar.THURSDAY -> "Kam"
+                                                Calendar.FRIDAY -> "Jum"
+                                                Calendar.SATURDAY -> "Sab"
+                                                else -> ""
+                                            }
+                                            val dateStr = WibDateUtils.format("dd/MM", cal.time)
+                                            val isToday = i == 6
+                                            Pair(if (isToday) "Hari Ini" else dayName, dateStr)
+                                        }
+                                    }
 
-                                weeklyLabels.forEach { (dayName, dateStr) ->
-                                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                        Text(
-                                            text = dayName,
-                                            fontSize = 9.sp,
-                                            color = SlateGrey,
-                                            fontWeight = FontWeight.Bold
-                                        )
-                                        Text(
-                                            text = dateStr,
-                                            fontSize = 8.sp,
-                                            color = Color.Gray,
-                                            fontWeight = FontWeight.Normal
-                                        )
+                                    weeklyLabels.forEach { (dayName, dateStr) ->
+                                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                            Text(
+                                                text = dayName,
+                                                fontSize = 9.sp,
+                                                color = if (dayName == "Hari Ini") BrandGreen else SlateGrey,
+                                                fontWeight = FontWeight.Bold
+                                            )
+                                            Text(
+                                                text = dateStr,
+                                                fontSize = 8.sp,
+                                                color = Color.Gray,
+                                                fontWeight = FontWeight.Normal
+                                            )
+                                        }
                                     }
                                 }
-                            } else {
-                                val xLabels = when (timeRangeSelection) {
-                                    0 -> listOf("12 Jam Lalu", "9 Jam Lalu", "6 Jam Lalu", "3 Jam Lalu", "Sekarang")
-                                    else -> listOf("Jan", "Mar", "Mei", "Jul", "Sep", "Nov", "Des")
-                                }
-                                xLabels.forEach { label ->
-                                    Text(
-                                        text = label,
-                                        fontSize = 8.sp,
-                                        color = Color.Gray,
-                                        fontWeight = FontWeight.Medium
-                                    )
+                                else -> {
+                                    // Sebulan: 4 minggu kebelakang (Rata-rata per minggu)
+                                    monthlyWeekIntervals.forEachIndexed { idx, week ->
+                                        val isCurrentWeek = idx == 3
+                                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                            Text(
+                                                text = week.shortTitle,
+                                                fontSize = 9.sp,
+                                                color = if (isCurrentWeek) BrandGreen else SlateGrey,
+                                                fontWeight = FontWeight.Bold
+                                            )
+                                            Text(
+                                                text = week.dateRangeStr,
+                                                fontSize = 7.5.sp,
+                                                color = Color.Gray,
+                                                fontWeight = FontWeight.Normal
+                                            )
+                                            Text(
+                                                text = "Rata-rata",
+                                                fontSize = 7.sp,
+                                                color = if (isCurrentWeek) BrandGreen.copy(alpha = 0.85f) else Color.LightGray,
+                                                fontWeight = FontWeight.SemiBold
+                                            )
+                                        }
+                                    }
                                 }
                             }
                         }
@@ -1937,11 +2149,61 @@ fun DashboardScreen(
                             }
                         }
 
-
-
-
                     } else {
-                        Text("Mempersiapkan tren sensor...", fontSize = 12.sp, modifier = Modifier.fillMaxWidth(), textAlign = TextAlign.Center)
+                        // Empty State for Harian when no data has been inputted yet today
+                        Card(
+                            colors = CardDefaults.cardColors(containerColor = Color(0xFFF8FAFC)),
+                            shape = RoundedCornerShape(16.dp),
+                            border = BorderStroke(1.dp, Color(0xFFE2E8F0)),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(vertical = 24.dp, horizontal = 16.dp),
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                verticalArrangement = Arrangement.Center
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(44.dp)
+                                        .background(Color(0xFFFEF3C7), CircleShape),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.Info,
+                                        contentDescription = null,
+                                        tint = BrandOrange,
+                                        modifier = Modifier.size(24.dp)
+                                    )
+                                }
+                                Spacer(modifier = Modifier.height(10.dp))
+                                Text(
+                                    text = "Belum Ada Data Input Pengukuran Hari Ini",
+                                    fontSize = 12.5.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = SlateGrey
+                                )
+                                Spacer(modifier = Modifier.height(4.dp))
+                                Text(
+                                    text = "Grafik Hari Ini hanya menampilkan data di hari ini yang sudah di-input.\nBelum ada data pengukuran hari ini untuk ${selectedUnit.id} (${selectedUnit.name}).",
+                                    fontSize = 10.5.sp,
+                                    color = Color.Gray,
+                                    textAlign = TextAlign.Center
+                                )
+                                Spacer(modifier = Modifier.height(12.dp))
+                                Button(
+                                    onClick = { showVibDialog = true },
+                                    colors = ButtonDefaults.buttonColors(containerColor = BrandGreen),
+                                    shape = RoundedCornerShape(8.dp),
+                                    contentPadding = PaddingValues(horizontal = 14.dp, vertical = 6.dp)
+                                ) {
+                                    Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(16.dp), tint = Color.White)
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text("+ Input Pengukuran Sekarang", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                                }
+                            }
+                        }
                     }
                 }
             }
@@ -3007,7 +3269,7 @@ fun ChecklistScreen(
 // -----------------------------------------------------------------------------------------------------------------
 @Composable
 fun ReportCiltView(ciltHistory: List<CiltCheck>) {
-    var selectedPeriod by remember { mutableStateOf("Harian") } // "Harian", "Mingguan", "Bulanan"
+    var selectedPeriod by remember { mutableStateOf("Hari Ini") } // "Hari Ini", "Seminggu", "Sebulan"
     var selectedOperatorFilter by remember { mutableStateOf("Semua") } // "Semua", "Wahyu", "Abdul Aziz"
     var expandedLogId by remember { mutableStateOf<Long?>(null) }
 
@@ -3016,19 +3278,19 @@ fun ReportCiltView(ciltHistory: List<CiltCheck>) {
         WibDateUtils.getStartOfDay(now)
     }
 
-    // Filter berdasarkan Periode (Harian, Mingguan, Bulanan)
+    // Filter berdasarkan Periode (Hari Ini, Seminggu, Sebulan)
     val periodFilteredChecks = remember(ciltHistory, selectedPeriod, now, startOfToday) {
         when (selectedPeriod) {
-            "Harian" -> {
+            "Hari Ini" -> {
                 val daily = ciltHistory.filter { it.timestamp >= startOfToday || it.timestamp >= (now - 24 * 3600 * 1000L) }
                 if (daily.isNotEmpty()) daily else ciltHistory.take(2)
             }
-            "Mingguan" -> {
+            "Seminggu" -> {
                 val weekThreshold = now - 7L * 24 * 3600 * 1000L
                 val weekly = ciltHistory.filter { it.timestamp >= weekThreshold }
                 if (weekly.isNotEmpty()) weekly else ciltHistory.take(6)
             }
-            else -> { // "Bulanan"
+            else -> { // "Sebulan"
                 val monthThreshold = now - 30L * 24 * 3600 * 1000L
                 val monthly = ciltHistory.filter { it.timestamp >= monthThreshold }
                 if (monthly.isNotEmpty()) monthly else ciltHistory
@@ -3048,8 +3310,8 @@ fun ReportCiltView(ciltHistory: List<CiltCheck>) {
     // Label range tanggal periode WIB
     val periodDateRangeText = remember(selectedPeriod, now) {
         when (selectedPeriod) {
-            "Harian" -> "Hari Ini • ${WibDateUtils.format("dd MMM yyyy", now)}"
-            "Mingguan" -> {
+            "Hari Ini" -> "Hari Ini • ${WibDateUtils.format("dd MMM yyyy", now)}"
+            "Seminggu" -> {
                 val weekStart = WibDateUtils.format("dd MMM", now - 7L * 24 * 3600 * 1000L)
                 "7 Hari Terakhir • $weekStart - ${WibDateUtils.format("dd MMM yyyy", now)}"
             }
@@ -3109,17 +3371,28 @@ fun ReportCiltView(ciltHistory: List<CiltCheck>) {
     val totalTighteningDone = nozzleBoltsTightenedCount + fittingPipesTightenedCount + beltTensionCheckedCount
     val tighteningRate = if (totalChecks > 0) (totalTighteningDone * 100) / (totalChecks * 3) else 0
 
-    // Overall Compliance
-    val totalItemsDone = totalCleaningDone + totalInspectionDone + totalLubricationDone + totalTighteningDone
-    val totalPossibleItems = totalChecks * 13
-    val overallComplianceRate = if (totalPossibleItems > 0) (totalItemsDone * 100) / totalPossibleItems else 0
-    val perfectChecksCount = finalFilteredChecks.count { countCheckCompleted(it) == 13 }
+    // Notes count in filtered checks
+    val notesCount = finalFilteredChecks.count { it.comments.replace("[Pagi]", "").replace("[Malam]", "").trim().isNotBlank() }
 
-    // Operator Contribution
-    val wahyuChecks = finalFilteredChecks.filter { it.operatorName.contains("Wahyu", ignoreCase = true) }
+    // Operator Contribution & Target Calculations
+    // Aturan Target CILT:
+    // - Hari Ini: Target Wahyu = 1, Abdul Aziz = 1 -> Total Target = 2
+    // - Seminggu: Target Wahyu = 7, Abdul Aziz = 7 -> Total Target = 14
+    // - Sebulan: Target Wahyu = 30, Abdul Aziz = 30 -> Total Target = 60
+    val (wahyuTarget, abdulAzizTarget) = when (selectedPeriod) {
+        "Hari Ini" -> Pair(1, 1)
+        "Seminggu" -> Pair(7, 7)
+        else -> Pair(30, 30) // "Sebulan"
+    }
+
+    val wahyuChecks = periodFilteredChecks.filter { it.operatorName.contains("Wahyu", ignoreCase = true) }
+    val wahyuActual = wahyuChecks.size
+    val wahyuExecutionRate = if (wahyuTarget > 0) (wahyuActual.toFloat() / wahyuTarget.toFloat() * 100f) else 0f
     val wahyuCompliance = if (wahyuChecks.isNotEmpty()) (wahyuChecks.sumOf { countCheckCompleted(it) } * 100) / (wahyuChecks.size * 13) else 0
 
-    val abdulAzizChecks = finalFilteredChecks.filter { it.operatorName.contains("Abdul", ignoreCase = true) }
+    val abdulAzizChecks = periodFilteredChecks.filter { it.operatorName.contains("Abdul", ignoreCase = true) }
+    val abdulAzizActual = abdulAzizChecks.size
+    val abdulAzizExecutionRate = if (abdulAzizTarget > 0) (abdulAzizActual.toFloat() / abdulAzizTarget.toFloat() * 100f) else 0f
     val abdulAzizCompliance = if (abdulAzizChecks.isNotEmpty()) (abdulAzizChecks.sumOf { countCheckCompleted(it) } * 100) / (abdulAzizChecks.size * 13) else 0
 
     LazyColumn(
@@ -3170,7 +3443,7 @@ fun ReportCiltView(ciltHistory: List<CiltCheck>) {
                         )
                     }
 
-                    // 3 Tombol Periode Segmented: | Harian | | Mingguan | | Bulanan |
+                    // 3 Tombol Periode Segmented: | Hari Ini | | Seminggu | | Sebulan |
                     Surface(
                         modifier = Modifier.fillMaxWidth(),
                         shape = RoundedCornerShape(12.dp),
@@ -3182,7 +3455,7 @@ fun ReportCiltView(ciltHistory: List<CiltCheck>) {
                                 .padding(3.dp),
                             horizontalArrangement = Arrangement.spacedBy(4.dp)
                         ) {
-                            listOf("Harian", "Mingguan", "Bulanan").forEach { period ->
+                            listOf("Hari Ini", "Seminggu", "Sebulan").forEach { period ->
                                 val isSelected = selectedPeriod == period
                                 Box(
                                     modifier = Modifier
@@ -3245,7 +3518,7 @@ fun ReportCiltView(ciltHistory: List<CiltCheck>) {
             }
         }
 
-        // B. RINGKASAN EKSEKUTIF / KPI CARDS (2x2 Grid)
+        // B. KINERJA OPERATOR (Sinkron dengan filter operator)
         item {
             Card(
                 colors = CardDefaults.cardColors(containerColor = Color.White),
@@ -3264,110 +3537,117 @@ fun ReportCiltView(ciltHistory: List<CiltCheck>) {
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Column {
-                            Text(
-                                text = "Ringkasan Eksekutif CILT",
-                                fontSize = 15.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = SlateGrey
-                            )
-                            Text(
-                                text = "Laporan $selectedPeriod ($periodDateRangeText)",
-                                fontSize = 11.sp,
-                                color = Color.Gray
-                            )
-                        }
-                        Box(
-                            modifier = Modifier
-                                .clip(RoundedCornerShape(8.dp))
-                                .background(if (overallComplianceRate >= 90) Color(0xFFDCFCE7) else Color(0xFFFEF3C7))
-                                .padding(horizontal = 10.dp, vertical = 5.dp)
-                        ) {
-                            Text(
-                                text = "$overallComplianceRate% Kepatuhan",
-                                fontSize = 12.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = if (overallComplianceRate >= 90) Color(0xFF166534) else Color(0xFF92400E)
-                            )
-                        }
+                        Text(
+                            text = when (selectedOperatorFilter) {
+                                "Wahyu" -> "Kinerja Operator: Wahyu"
+                                "Abdul Aziz" -> "Kinerja Operator: Abdul Aziz"
+                                else -> "Kinerja Operator Pelaksana"
+                            },
+                            fontSize = 15.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = SlateGrey
+                        )
+                        Text(
+                            text = "Target Periode $selectedPeriod",
+                            fontSize = 11.sp,
+                            color = Color.Gray
+                        )
                     }
 
-                    // 4 KPI Mini Cards
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        // KPI 1: Total Checklist
-                        Surface(
-                            modifier = Modifier.weight(1f),
-                            shape = RoundedCornerShape(12.dp),
-                            color = Color(0xFFF8FAFC),
-                            border = BorderStroke(1.dp, Color(0xFFE2E8F0))
+                    if (selectedOperatorFilter == "Semua") {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(10.dp)
                         ) {
-                            Column(modifier = Modifier.padding(10.dp)) {
-                                Text("Total Checklist", fontSize = 10.sp, color = Color.Gray)
-                                Spacer(modifier = Modifier.height(2.dp))
-                                Text("$totalChecks Kali", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = BrandGreen)
-                                Text("Pemeriksaan", fontSize = 9.sp, color = SlateGrey)
-                            }
+                            CiltOperatorCard(
+                                name = "Wahyu",
+                                target = wahyuTarget,
+                                actual = wahyuActual,
+                                executionRate = wahyuExecutionRate,
+                                compliance = wahyuCompliance,
+                                modifier = Modifier.weight(1f)
+                            )
+                            CiltOperatorCard(
+                                name = "Abdul Aziz",
+                                target = abdulAzizTarget,
+                                actual = abdulAzizActual,
+                                executionRate = abdulAzizExecutionRate,
+                                compliance = abdulAzizCompliance,
+                                modifier = Modifier.weight(1f)
+                            )
                         }
-
-                        // KPI 2: Kepatuhan SOP
-                        Surface(
-                            modifier = Modifier.weight(1f),
-                            shape = RoundedCornerShape(12.dp),
-                            color = Color(0xFFF8FAFC),
-                            border = BorderStroke(1.dp, Color(0xFFE2E8F0))
-                        ) {
-                            Column(modifier = Modifier.padding(10.dp)) {
-                                Text("Kepatuhan SOP", fontSize = 10.sp, color = Color.Gray)
-                                Spacer(modifier = Modifier.height(2.dp))
-                                Text("$overallComplianceRate%", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = BrandGreen)
-                                Text("13 Item CILT", fontSize = 9.sp, color = SlateGrey)
-                            }
-                        }
-                    }
-
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        // KPI 3: 100% Selesai Sempurna
-                        Surface(
-                            modifier = Modifier.weight(1f),
-                            shape = RoundedCornerShape(12.dp),
-                            color = Color(0xFFF8FAFC),
-                            border = BorderStroke(1.dp, Color(0xFFE2E8F0))
-                        ) {
-                            Column(modifier = Modifier.padding(10.dp)) {
-                                Text("Sempurna (100%)", fontSize = 10.sp, color = Color.Gray)
-                                Spacer(modifier = Modifier.height(2.dp))
-                                Text("$perfectChecksCount / $totalChecks", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = Color(0xFF166534))
-                                Text("Seluruh item OK", fontSize = 9.sp, color = SlateGrey)
-                            }
-                        }
-
-                        // KPI 4: Temuan Lapangan
-                        val notesCount = finalFilteredChecks.count { it.comments.replace("[Pagi]", "").replace("[Malam]", "").trim().isNotBlank() }
-                        Surface(
-                            modifier = Modifier.weight(1f),
-                            shape = RoundedCornerShape(12.dp),
-                            color = Color(0xFFF8FAFC),
-                            border = BorderStroke(1.dp, Color(0xFFE2E8F0))
-                        ) {
-                            Column(modifier = Modifier.padding(10.dp)) {
-                                Text("Catatan / Temuan", fontSize = 10.sp, color = Color.Gray)
-                                Spacer(modifier = Modifier.height(2.dp))
-                                Text("$notesCount Catatan", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = BrandOrange)
-                                Text("Tercatat di lapangan", fontSize = 9.sp, color = SlateGrey)
-                            }
-                        }
+                    } else if (selectedOperatorFilter == "Wahyu") {
+                        CiltOperatorCard(
+                            name = "Wahyu",
+                            target = wahyuTarget,
+                            actual = wahyuActual,
+                            executionRate = wahyuExecutionRate,
+                            compliance = wahyuCompliance,
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                    } else { // "Abdul Aziz"
+                        CiltOperatorCard(
+                            name = "Abdul Aziz",
+                            target = abdulAzizTarget,
+                            actual = abdulAzizActual,
+                            executionRate = abdulAzizExecutionRate,
+                            compliance = abdulAzizCompliance,
+                            modifier = Modifier.fillMaxWidth()
+                        )
                     }
                 }
             }
         }
 
-        // C. ANALISIS 4 PILAR CILT (Cleaning, Inspection, Lubrication, Tightening)
+        // C. CATATAN / TEMUAN KHUSUS DI LAPANGAN
+        item {
+            Surface(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(14.dp),
+                color = Color.White,
+                border = BorderStroke(1.dp, Color(0xFFE2E8F0))
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(14.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(
+                        modifier = Modifier.weight(1f),
+                        verticalArrangement = Arrangement.spacedBy(2.dp)
+                    ) {
+                        Text(
+                            text = "Catatan / Temuan Khusus di Lapangan",
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = SlateGrey
+                        )
+                        Text(
+                            text = if (notesCount > 0) "$notesCount temuan/catatan tercatat di lapangan ($selectedPeriod)" else "Tidak ada catatan abnormalitas pada periode $selectedPeriod",
+                            fontSize = 10.5.sp,
+                            color = Color.Gray
+                        )
+                    }
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(if (notesCount > 0) Color(0xFFFEF3C7) else Color(0xFFDCFCE7))
+                            .padding(horizontal = 10.dp, vertical = 6.dp)
+                    ) {
+                        Text(
+                            text = "$notesCount Catatan",
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = if (notesCount > 0) BrandOrange else Color(0xFF166534)
+                        )
+                    }
+                }
+            }
+        }
+
+        // D. ANALISIS 4 AKTIVITAS CILT (Cleaning, Inspection, Lubrication, Tightening)
         item {
             Card(
                 colors = CardDefaults.cardColors(containerColor = Color.White),
@@ -3382,13 +3662,13 @@ fun ReportCiltView(ciltHistory: List<CiltCheck>) {
                     verticalArrangement = Arrangement.spacedBy(14.dp)
                 ) {
                     Text(
-                        text = "Pencapaian 4 Pilar CILT ($selectedPeriod)",
+                        text = "Pencapaian 4 Aktivitas CILT ($selectedPeriod)",
                         fontSize = 15.sp,
                         fontWeight = FontWeight.Bold,
                         color = SlateGrey
                     )
 
-                    // Pilar 1: Cleaning
+                    // Aktivitas 1: Cleaning
                     PillarReportItem(
                         letter = "C",
                         title = "Cleaning (Pembersihan)",
@@ -3402,7 +3682,7 @@ fun ReportCiltView(ciltHistory: List<CiltCheck>) {
 
                     Divider(color = Color(0xFFF1F5F9))
 
-                    // Pilar 2: Inspection
+                    // Aktivitas 2: Inspection
                     PillarReportItem(
                         letter = "I",
                         title = "Inspection (Inspeksi)",
@@ -3417,7 +3697,7 @@ fun ReportCiltView(ciltHistory: List<CiltCheck>) {
 
                     Divider(color = Color(0xFFF1F5F9))
 
-                    // Pilar 3: Lubrication
+                    // Aktivitas 3: Lubrication
                     PillarReportItem(
                         letter = "L",
                         title = "Lubrication (Pelumasan)",
@@ -3431,7 +3711,7 @@ fun ReportCiltView(ciltHistory: List<CiltCheck>) {
 
                     Divider(color = Color(0xFFF1F5F9))
 
-                    // Pilar 4: Tightening
+                    // Aktivitas 4: Tightening
                     PillarReportItem(
                         letter = "T",
                         title = "Tightening (Pengencangan)",
@@ -3442,93 +3722,6 @@ fun ReportCiltView(ciltHistory: List<CiltCheck>) {
                             "Ketegangan V-Belt (>50 N)" to "$beltTensionCheckedCount / $totalChecks"
                         )
                     )
-                }
-            }
-        }
-
-        // D. KINERJA OPERATOR (Wahyu vs Abdul Aziz)
-        item {
-            Card(
-                colors = CardDefaults.cardColors(containerColor = Color.White),
-                shape = RoundedCornerShape(20.dp),
-                border = BorderStroke(1.dp, Color(0xFFE2E8F0)),
-                elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
-            ) {
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(16.dp),
-                    verticalArrangement = Arrangement.spacedBy(10.dp)
-                ) {
-                    Text(
-                        text = "Kinerja Operator Pelaksana",
-                        fontSize = 15.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = SlateGrey
-                    )
-
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(10.dp)
-                    ) {
-                        // Wahyu Card
-                        Surface(
-                            modifier = Modifier.weight(1f),
-                            shape = RoundedCornerShape(12.dp),
-                            color = Color(0xFFF8FAFC),
-                            border = BorderStroke(1.dp, Color(0xFFE2E8F0))
-                        ) {
-                            Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                                Row(
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
-                                ) {
-                                    Icon(Icons.Default.Person, contentDescription = null, tint = BrandGreen, modifier = Modifier.size(16.dp))
-                                    Text("Wahyu", fontWeight = FontWeight.Bold, fontSize = 13.sp, color = SlateGrey)
-                                }
-                                Text("${wahyuChecks.size} Laporan", fontSize = 12.sp, color = Color.Gray)
-                                LinearProgressIndicator(
-                                    progress = { (wahyuCompliance / 100f).coerceIn(0f, 1f) },
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .height(6.dp)
-                                        .clip(RoundedCornerShape(3.dp)),
-                                    color = BrandGreen,
-                                    trackColor = Color(0xFFE2E8F0)
-                                )
-                                Text("$wahyuCompliance% Kepatuhan", fontSize = 11.sp, fontWeight = FontWeight.SemiBold, color = BrandGreen)
-                            }
-                        }
-
-                        // Abdul Aziz Card
-                        Surface(
-                            modifier = Modifier.weight(1f),
-                            shape = RoundedCornerShape(12.dp),
-                            color = Color(0xFFF8FAFC),
-                            border = BorderStroke(1.dp, Color(0xFFE2E8F0))
-                        ) {
-                            Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                                Row(
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
-                                ) {
-                                    Icon(Icons.Default.Person, contentDescription = null, tint = BrandGreen, modifier = Modifier.size(16.dp))
-                                    Text("Abdul Aziz", fontWeight = FontWeight.Bold, fontSize = 13.sp, color = SlateGrey)
-                                }
-                                Text("${abdulAzizChecks.size} Laporan", fontSize = 12.sp, color = Color.Gray)
-                                LinearProgressIndicator(
-                                    progress = { (abdulAzizCompliance / 100f).coerceIn(0f, 1f) },
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .height(6.dp)
-                                        .clip(RoundedCornerShape(3.dp)),
-                                    color = BrandGreen,
-                                    trackColor = Color(0xFFE2E8F0)
-                                )
-                                Text("$abdulAzizCompliance% Kepatuhan", fontSize = 11.sp, fontWeight = FontWeight.SemiBold, color = BrandGreen)
-                            }
-                        }
-                    }
                 }
             }
         }
@@ -3686,7 +3879,7 @@ fun ReportCiltView(ciltHistory: List<CiltCheck>) {
                                 Text(
                                     text = "Catatan: $cleanNotes",
                                     fontSize = 11.sp,
-                                    color = SlateGrey,
+                                    color = Color.Black,
                                     modifier = Modifier.padding(8.dp)
                                 )
                             }
@@ -3803,6 +3996,104 @@ private fun CheckDetailRow(title: String, checked: Boolean) {
             fontWeight = FontWeight.Bold,
             color = if (checked) Color(0xFF166534) else Color(0xFFDC2626)
         )
+    }
+}
+
+@Composable
+private fun CiltOperatorCard(
+    name: String,
+    target: Int,
+    actual: Int,
+    executionRate: Float,
+    compliance: Int,
+    modifier: Modifier = Modifier
+) {
+    Surface(
+        modifier = modifier,
+        shape = RoundedCornerShape(14.dp),
+        color = Color(0xFFF8FAFC),
+        border = BorderStroke(1.dp, Color(0xFFE2E8F0))
+    ) {
+        Column(
+            modifier = Modifier.padding(12.dp),
+            verticalArrangement = Arrangement.spacedBy(6.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    Icon(Icons.Default.Person, contentDescription = null, tint = BrandGreen, modifier = Modifier.size(16.dp))
+                    Text(name, fontWeight = FontWeight.Bold, fontSize = 13.sp, color = SlateGrey)
+                }
+                Box(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(4.dp))
+                        .background(if (executionRate >= 100f) Color(0xFFDCFCE7) else Color(0xFFFEF3C7))
+                        .padding(horizontal = 5.dp, vertical = 2.dp)
+                ) {
+                    Text(
+                        text = if (executionRate >= 100f) "Capai ✓" else "${String.format(Locale.US, "%.0f", executionRate)}%",
+                        fontSize = 9.5.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = if (executionRate >= 100f) Color(0xFF166534) else Color(0xFF92400E)
+                    )
+                }
+            }
+
+            // 1. Target & Aktual Pelaksanaan
+            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Text("Target Pelaksanaan:", fontSize = 10.sp, color = Color.Gray)
+                    Text("$actual / $target Kali", fontSize = 10.5.sp, fontWeight = FontWeight.Bold, color = SlateGrey)
+                }
+                LinearProgressIndicator(
+                    progress = { (executionRate / 100f).coerceIn(0f, 1f) },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(5.dp)
+                        .clip(RoundedCornerShape(3.dp)),
+                    color = if (executionRate >= 100f) BrandGreen else BrandOrange,
+                    trackColor = Color(0xFFE2E8F0)
+                )
+                Text(
+                    text = "Realisasi: ${String.format(Locale.US, "%.1f", executionRate)}%",
+                    fontSize = 10.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color = if (executionRate >= 100f) Color(0xFF166534) else BrandOrange
+                )
+            }
+
+            HorizontalDivider(color = Color(0xFFE2E8F0), thickness = 0.5.dp)
+
+            // 2. Kepatuhan SOP (13 item)
+            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Text("Kepatuhan SOP:", fontSize = 10.sp, color = Color.Gray)
+                    Text("$compliance%", fontSize = 10.5.sp, fontWeight = FontWeight.Bold, color = BrandGreen)
+                }
+                LinearProgressIndicator(
+                    progress = { (compliance / 100f).coerceIn(0f, 1f) },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(5.dp)
+                        .clip(RoundedCornerShape(3.dp)),
+                    color = BrandGreen,
+                    trackColor = Color(0xFFE2E8F0)
+                )
+                Text("13 Item CILT", fontSize = 9.sp, color = Color.Gray)
+            }
+        }
     }
 }
 
@@ -4328,12 +4619,18 @@ fun DailyCiltForm(onSave: (CiltCheck) -> Unit, history: List<CiltCheck>) {
                         text = "Catatan / Temuan Khusus di Lapangan",
                         fontSize = 14.sp,
                         fontWeight = FontWeight.Bold,
-                        color = SlateGrey
+                        color = Color.Black
                     )
 
                     OutlinedTextField(
                         value = comments,
                         onValueChange = { comments = it },
+                        textStyle = TextStyle(color = Color.Black, fontSize = 13.sp),
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedTextColor = Color.Black,
+                            unfocusedTextColor = Color.Black,
+                            cursorColor = Color.Black
+                        ),
                         placeholder = { Text("Tuliskan jika ada temuan abnormalitas, kebocoran, baut dol, vibrasi, dsb...", fontSize = 12.sp, color = Color.Gray) },
                         leadingIcon = {
                             Icon(Icons.Default.EditNote, contentDescription = null, tint = BrandGreen)
@@ -4552,7 +4849,7 @@ fun DailyCiltForm(onSave: (CiltCheck) -> Unit, history: List<CiltCheck>) {
                                 Text(
                                     text = check.comments,
                                     fontSize = 11.sp,
-                                    color = SlateGrey,
+                                    color = Color.Black,
                                     modifier = Modifier.padding(8.dp)
                                 )
                             }
@@ -5068,7 +5365,7 @@ fun AbnormalityScreen(
     var tagType by remember { mutableStateOf("None") } // Default to None
 
     // State untuk sub-menu "Report"
-    var selectedPeriod by remember { mutableStateOf("Harian") } // "Harian", "Mingguan", "Bulanan", "Semua"
+    var selectedPeriod by remember { mutableStateOf("Hari Ini") } // "Hari Ini", "Seminggu", "Sebulan", "Semua"
     var selectedReportMachine by remember { mutableStateOf("Semua Mesin") }
     var reportMachineDropdownExpanded by remember { mutableStateOf(false) }
 
@@ -5076,7 +5373,7 @@ fun AbnormalityScreen(
     val filteredReports = remember(reports, selectedPeriod, selectedReportMachine) {
         reports.filter { r ->
             val inPeriod = when (selectedPeriod) {
-                "Harian" -> {
+                "Hari Ini" -> {
                     val cal = WibDateUtils.getCalendar()
                     cal.set(Calendar.HOUR_OF_DAY, 0)
                     cal.set(Calendar.MINUTE, 0)
@@ -5084,10 +5381,10 @@ fun AbnormalityScreen(
                     cal.set(Calendar.MILLISECOND, 0)
                     r.timestamp >= cal.timeInMillis || (now - r.timestamp) <= 24L * 3600 * 1000
                 }
-                "Mingguan" -> {
+                "Seminggu" -> {
                     r.timestamp >= (now - 7L * 24 * 3600 * 1000)
                 }
-                "Bulanan" -> {
+                "Sebulan" -> {
                     r.timestamp >= (now - 30L * 24 * 3600 * 1000)
                 }
                 else -> true
@@ -5825,7 +6122,7 @@ fun AbnormalityScreen(
                                 modifier = Modifier.fillMaxWidth(),
                                 horizontalArrangement = Arrangement.spacedBy(6.dp)
                             ) {
-                                listOf("Harian", "Mingguan", "Bulanan", "Semua").forEach { period ->
+                                listOf("Hari Ini", "Seminggu", "Sebulan", "Semua").forEach { period ->
                                     val isSelected = selectedPeriod == period
                                     Box(
                                         modifier = Modifier
@@ -6494,9 +6791,72 @@ fun FlushingScreen(
     val hoursList = remember { (0..24).map { String.format("%02d:00", it) } }
 
     // Report Filter States
+    var filterPeriod by remember { mutableStateOf("Hari ini") }
     var filterShift by remember { mutableStateOf("Semua") }
     var filterUnit by remember { mutableStateOf("Semua") }
     var logToDelete by remember { mutableStateOf<FlushingLog?>(null) }
+
+    val todayStartMillis = remember { WibDateUtils.getStartOfDay() }
+    val todayEndMillis = remember { todayStartMillis + 24 * 60 * 60 * 1000L - 1L }
+    var customStartDate by remember { mutableStateOf(todayStartMillis) }
+    var customEndDate by remember { mutableStateOf(todayEndMillis) }
+
+    fun pickStartDate() {
+        val cal = WibDateUtils.getCalendar(customStartDate)
+        android.app.DatePickerDialog(
+            context,
+            { _, year, month, dayOfMonth ->
+                val newCal = WibDateUtils.getCalendar().apply {
+                    set(Calendar.YEAR, year)
+                    set(Calendar.MONTH, month)
+                    set(Calendar.DAY_OF_MONTH, dayOfMonth)
+                    set(Calendar.HOUR_OF_DAY, 0)
+                    set(Calendar.MINUTE, 0)
+                    set(Calendar.SECOND, 0)
+                    set(Calendar.MILLISECOND, 0)
+                }
+                val newStart = newCal.timeInMillis
+                customStartDate = newStart
+                if (customEndDate < newStart) {
+                    customEndDate = newStart + 24 * 60 * 60 * 1000L - 1L
+                }
+            },
+            cal.get(Calendar.YEAR),
+            cal.get(Calendar.MONTH),
+            cal.get(Calendar.DAY_OF_MONTH)
+        ).show()
+    }
+
+    fun pickEndDate() {
+        val cal = WibDateUtils.getCalendar(customEndDate)
+        android.app.DatePickerDialog(
+            context,
+            { _, year, month, dayOfMonth ->
+                val newCal = WibDateUtils.getCalendar().apply {
+                    set(Calendar.YEAR, year)
+                    set(Calendar.MONTH, month)
+                    set(Calendar.DAY_OF_MONTH, dayOfMonth)
+                    set(Calendar.HOUR_OF_DAY, 23)
+                    set(Calendar.MINUTE, 59)
+                    set(Calendar.SECOND, 59)
+                    set(Calendar.MILLISECOND, 999)
+                }
+                val newEnd = newCal.timeInMillis
+                customEndDate = newEnd
+                if (customStartDate > newEnd) {
+                    customStartDate = WibDateUtils.getCalendar(newEnd).apply {
+                        set(Calendar.HOUR_OF_DAY, 0)
+                        set(Calendar.MINUTE, 0)
+                        set(Calendar.SECOND, 0)
+                        set(Calendar.MILLISECOND, 0)
+                    }.timeInMillis
+                }
+            },
+            cal.get(Calendar.YEAR),
+            cal.get(Calendar.MONTH),
+            cal.get(Calendar.DAY_OF_MONTH)
+        ).show()
+    }
 
     Column(
         modifier = Modifier
@@ -7135,9 +7495,16 @@ fun FlushingScreen(
                                 OutlinedTextField(
                                     value = flushingNotes,
                                     onValueChange = { flushingNotes = it },
-                                    label = { Text("Catatan / Evaluasi Flushing") },
+                                    label = { Text("Catatan / Evaluasi Flushing", color = Color.Black) },
                                     placeholder = { Text("Contoh: Air panas mencapai 93°C, getaran bowl halus, tidak ada kotoran tersisa.") },
                                     minLines = 2,
+                                    textStyle = TextStyle(color = Color.Black, fontSize = 14.sp),
+                                    colors = OutlinedTextFieldDefaults.colors(
+                                        focusedTextColor = Color.Black,
+                                        unfocusedTextColor = Color.Black,
+                                        focusedLabelColor = Color.Black,
+                                        unfocusedLabelColor = Color.Black
+                                    ),
                                     modifier = Modifier.fillMaxWidth()
                                 )
 
@@ -7214,15 +7581,31 @@ fun FlushingScreen(
                 // =========================================================================
                 // MENU REPORT FLUSHING
                 // =========================================================================
+                val now = System.currentTimeMillis()
+                val startOfToday = remember(now) { WibDateUtils.getStartOfDay(now) }
+                val weekThreshold = remember(now) { now - 7L * 24 * 60 * 60 * 1000L }
+                val monthThreshold = remember(now) { now - 30L * 24 * 60 * 60 * 1000L }
+
                 val filteredLogs = flushingLogs.filter { log ->
-                    (filterShift == "Semua" || log.shift == filterShift) &&
-                    (filterUnit == "Semua" || log.unitName == filterUnit)
+                    val matchesPeriod = when (filterPeriod) {
+                        "Hari ini" -> log.timestamp >= startOfToday
+                        "Seminggu" -> log.timestamp >= weekThreshold
+                        "Sebulan" -> log.timestamp >= monthThreshold
+                        "Tanggal" -> log.timestamp in customStartDate..customEndDate
+                        else -> true
+                    }
+                    val matchesShift = filterShift == "Semua" || log.shift == filterShift
+                    val matchesUnit = filterUnit == "Semua" || 
+                        log.unitName.replace(" ", "-").equals(filterUnit.replace(" ", "-"), ignoreCase = true) ||
+                        log.unitName.equals(filterUnit, ignoreCase = true)
+
+                    matchesPeriod && matchesShift && matchesUnit
                 }
 
-                val shiftPagiCount = flushingLogs.count { it.shift == "Shift Pagi" }
-                val shiftMalamCount = flushingLogs.count { it.shift == "Shift Malam" }
-                val avgCompliance = if (flushingLogs.isNotEmpty()) {
-                    (flushingLogs.sumOf { it.completedCount }.toDouble() / (flushingLogs.size * 11) * 100).toInt()
+                val shiftPagiCount = filteredLogs.count { it.shift == "Shift Pagi" }
+                val shiftMalamCount = filteredLogs.count { it.shift == "Shift Malam" }
+                val avgCompliance = if (filteredLogs.isNotEmpty()) {
+                    (filteredLogs.sumOf { it.completedCount }.toDouble() / (filteredLogs.size * 11) * 100).toInt()
                 } else 100
 
                 LazyColumn(
@@ -7231,7 +7614,7 @@ fun FlushingScreen(
                         .padding(horizontal = 14.dp, vertical = 10.dp),
                     verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
-                    // KPI Highlights
+                    // KPI Highlights (Sinkron dengan Periode, Shift, dan Unit)
                     item {
                         Card(
                             colors = CardDefaults.cardColors(containerColor = SlateGrey),
@@ -7250,7 +7633,7 @@ fun FlushingScreen(
                                     modifier = Modifier.fillMaxWidth(),
                                     horizontalArrangement = Arrangement.SpaceBetween
                                 ) {
-                                    FlushingStatBox(label = "Total Laporan", value = "${flushingLogs.size}", color = Color.White)
+                                    FlushingStatBox(label = "Total Laporan", value = "${filteredLogs.size}", color = Color.White)
                                     FlushingStatBox(label = "Shift Pagi", value = "$shiftPagiCount", color = Color(0xFFFFD54F))
                                     FlushingStatBox(label = "Shift Malam", value = "$shiftMalamCount", color = Color(0xFFB39DDB))
                                     FlushingStatBox(label = "Kepatuhan SOP", value = "$avgCompliance%", color = Color(0xFF81C784))
@@ -7267,6 +7650,129 @@ fun FlushingScreen(
                             border = BorderStroke(1.dp, Color(0xFFE2E8F0))
                         ) {
                             Column(modifier = Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                // Periode Report Filter (Hari ini | Seminggu | Sebulan | Tanggal)
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .horizontalScroll(rememberScrollState()),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                ) {
+                                    Text("Periode Report:", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = SlateGrey)
+                                    listOf("Hari ini", "Seminggu", "Sebulan", "Tanggal").forEach { prd ->
+                                        val isSelected = filterPeriod == prd
+                                        FilterChip(
+                                            selected = isSelected,
+                                            onClick = { filterPeriod = prd },
+                                            label = {
+                                                Text(
+                                                    text = prd,
+                                                    fontSize = 11.sp,
+                                                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                                                    color = if (isSelected) Color.White else Color.Black
+                                                )
+                                            },
+                                            colors = FilterChipDefaults.filterChipColors(
+                                                containerColor = Color.White,
+                                                labelColor = Color.Black,
+                                                selectedContainerColor = BrandGreen,
+                                                selectedLabelColor = Color.White
+                                            )
+                                        )
+                                    }
+                                }
+
+                                if (filterPeriod == "Tanggal") {
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        // Tanggal Mulai
+                                        Surface(
+                                            modifier = Modifier
+                                                .weight(1f)
+                                                .clickable { pickStartDate() },
+                                            shape = RoundedCornerShape(8.dp),
+                                            color = Color(0xFFF8FAFC),
+                                            border = BorderStroke(1.dp, Color(0xFFCBD5E1))
+                                        ) {
+                                            Row(
+                                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp),
+                                                verticalAlignment = Alignment.CenterVertically,
+                                                horizontalArrangement = Arrangement.SpaceBetween
+                                            ) {
+                                                Column {
+                                                    Text(
+                                                        text = "TANGGAL MULAI",
+                                                        fontSize = 8.sp,
+                                                        fontWeight = FontWeight.Bold,
+                                                        color = SlateGrey
+                                                    )
+                                                    Text(
+                                                        text = WibDateUtils.format("dd MMM yyyy", customStartDate),
+                                                        fontSize = 11.sp,
+                                                        fontWeight = FontWeight.Bold,
+                                                        color = Color.Black
+                                                    )
+                                                }
+                                                Icon(
+                                                    imageVector = Icons.Default.CalendarToday,
+                                                    contentDescription = "Pilih Tanggal Mulai",
+                                                    tint = BrandGreen,
+                                                    modifier = Modifier.size(14.dp)
+                                                )
+                                            }
+                                        }
+
+                                        Icon(
+                                            imageVector = Icons.Default.ArrowForward,
+                                            contentDescription = null,
+                                            tint = Color.Gray,
+                                            modifier = Modifier.size(14.dp)
+                                        )
+
+                                        // Tanggal Akhir
+                                        Surface(
+                                            modifier = Modifier
+                                                .weight(1f)
+                                                .clickable { pickEndDate() },
+                                            shape = RoundedCornerShape(8.dp),
+                                            color = Color(0xFFF8FAFC),
+                                            border = BorderStroke(1.dp, Color(0xFFCBD5E1))
+                                        ) {
+                                            Row(
+                                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp),
+                                                verticalAlignment = Alignment.CenterVertically,
+                                                horizontalArrangement = Arrangement.SpaceBetween
+                                            ) {
+                                                Column {
+                                                    Text(
+                                                        text = "TANGGAL AKHIR",
+                                                        fontSize = 8.sp,
+                                                        fontWeight = FontWeight.Bold,
+                                                        color = SlateGrey
+                                                    )
+                                                    Text(
+                                                        text = WibDateUtils.format("dd MMM yyyy", customEndDate),
+                                                        fontSize = 11.sp,
+                                                        fontWeight = FontWeight.Bold,
+                                                        color = Color.Black
+                                                    )
+                                                }
+                                                Icon(
+                                                    imageVector = Icons.Default.CalendarToday,
+                                                    contentDescription = "Pilih Tanggal Akhir",
+                                                    tint = BrandGreen,
+                                                    modifier = Modifier.size(14.dp)
+                                                )
+                                            }
+                                        }
+                                    }
+                                }
+
+                                HorizontalDivider(color = Color(0xFFF1F5F9), thickness = 0.5.dp)
+
                                 // Shift Filter
                                 Row(
                                     modifier = Modifier.fillMaxWidth(),
@@ -7296,6 +7802,8 @@ fun FlushingScreen(
                                         )
                                     }
                                 }
+
+                                HorizontalDivider(color = Color(0xFFF1F5F9), thickness = 0.5.dp)
 
                                 // Unit Filter (Semua, SC-01 s/d SC-08)
                                 Row(
@@ -7683,12 +8191,28 @@ fun FlushingReportCard(
             }
 
             if (log.notes.isNotBlank()) {
-                Text(
-                    text = "Catatan: ${log.notes}",
-                    fontSize = 11.sp,
-                    color = Color.DarkGray,
-                    lineHeight = 15.sp
-                )
+                Surface(
+                    color = Color(0xFFF8FAFC),
+                    shape = RoundedCornerShape(8.dp),
+                    border = BorderStroke(1.dp, Color(0xFFE2E8F0)),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(modifier = Modifier.padding(8.dp)) {
+                        Text(
+                            text = "Catatan / Evaluasi Flushing:",
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Color.Black
+                        )
+                        Spacer(modifier = Modifier.height(2.dp))
+                        Text(
+                            text = log.notes,
+                            fontSize = 11.sp,
+                            color = Color.Black,
+                            lineHeight = 15.sp
+                        )
+                    }
+                }
             }
 
             HorizontalDivider(color = Color(0xFFF1F5F9))
