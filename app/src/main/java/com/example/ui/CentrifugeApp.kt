@@ -1295,13 +1295,13 @@ fun DashboardScreen(
                                                 },
                                                 fontSize = 11.sp,
                                                 fontWeight = FontWeight.SemiBold,
-                                                color = SlateGrey
+                                                color = Color.Black
                                             )
                                             val obsNote = latestTodayLog.comments.replace(Regex("\\[SC-[0-9]{2}\\]"), "").trim()
                                             Text(
                                                 text = obsNote.ifEmpty { "Kondisi operasi centrifuge normal dan stabil." },
                                                 fontSize = 11.sp,
-                                                color = Color.DarkGray,
+                                                color = Color.Black,
                                                 fontWeight = FontWeight.Medium
                                             )
                                             Row(
@@ -1311,12 +1311,12 @@ fun DashboardScreen(
                                                 Text(
                                                     text = "Waktu terakhir: ${WibDateUtils.format("HH:mm", latestTodayLog.timestamp)} WIB",
                                                     fontSize = 10.sp,
-                                                    color = Color.Gray
+                                                    color = Color.Black
                                                 )
                                                 Text(
                                                     text = "Operator: ${latestTodayLog.operatorName.ifEmpty { "Operator Centrifuge" }}",
                                                     fontSize = 10.sp,
-                                                    color = Color.Gray
+                                                    color = Color.Black
                                                 )
                                             }
                                         }
@@ -2111,7 +2111,7 @@ fun DashboardScreen(
                                         Text(
                                             text = "Catatan: $cleanedComment",
                                             fontSize = 11.sp,
-                                            color = Color.DarkGray,
+                                            color = Color.Black,
                                             modifier = Modifier.padding(top = 2.dp)
                                         )
                                     }
@@ -2793,21 +2793,23 @@ fun DashboardScreen(
                                 text = "3. Catatan hasil observasi :",
                                 fontSize = 12.sp,
                                 fontWeight = FontWeight.SemiBold,
-                                color = SlateGrey
+                                color = Color.Black
                             )
                             OutlinedTextField(
                                 value = comments,
                                 onValueChange = { comments = it },
-                                placeholder = { Text("Tulis catatan hasil observasi...", fontSize = 12.sp, color = Color.Gray) },
+                                placeholder = { Text("Tulis catatan hasil observasi...", fontSize = 12.sp, color = Color.DarkGray) },
                                 singleLine = true,
                                 shape = RoundedCornerShape(8.dp),
                                 colors = OutlinedTextFieldDefaults.colors(
+                                    focusedTextColor = Color.Black,
+                                    unfocusedTextColor = Color.Black,
                                     focusedContainerColor = Color(0xFFF8FAFC),
                                     unfocusedContainerColor = Color(0xFFF8FAFC),
                                     focusedBorderColor = BrandGreen,
                                     unfocusedBorderColor = Color(0xFFCBD5E1)
                                 ),
-                                textStyle = LocalTextStyle.current.copy(fontSize = 12.sp),
+                                textStyle = LocalTextStyle.current.copy(fontSize = 12.sp, color = Color.Black),
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .testTag("comments_input")
