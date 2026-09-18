@@ -334,7 +334,7 @@ fun CentrifugeApp(viewModel: CentrifugeViewModel) {
                             )
                             Spacer(modifier = Modifier.width(4.dp))
                             Text(
-                                text = "Kirim ke\nJakarta",
+                                text = "Sync\nCloud",
                                 color = Color.Black,
                                 fontSize = 9.sp,
                                 fontWeight = FontWeight.Bold,
@@ -503,8 +503,10 @@ fun getMonthlyWeekIntervals(): List<MonthlyWeekInterval> {
 
 fun getUnitSummaryMetrics(
     unit: CentrifugeUnitState,
-    timeRangeSelection: Int, // 0: Hari Ini, 1: Seminggu, 2: Sebulan
-    vibrationLogs: List<VibrationLog>
+    timeRangeSelection: Int, // 0: Hari Ini, 1: Seminggu, 2: Sebulan, 3: Tanggal
+    vibrationLogs: List<VibrationLog>,
+    startDateMillis: Long = 0L,
+    endDateMillis: Long = Long.MAX_VALUE
 ): UnitSummaryMetrics {
     val now = WibDateUtils.getCalendar()
     val cal = WibDateUtils.getCalendar().apply {
@@ -651,7 +653,7 @@ fun getUnitSummaryMetrics(
                 avgTemp = 0.0f
             }
         }
-        else -> { // Sebulan (30 Hari Terakhir)
+        2 -> { // Sebulan (30 Hari Terakhir)
             if (monthlyLogs.isNotEmpty()) {
                 val deAvg = monthlyLogs.map { it.driveEndVibration }.average().toFloat()
                 val ndeAvg = monthlyLogs.map { it.nonDriveEndVibration }.average().toFloat()
@@ -708,11 +710,55 @@ fun getUnitSummaryMetrics(
                 avgTemp = 0.0f
             }
         }
+        else -> { // 3: Tanggal Kustom
+            val customLogs = unitLogs.filter { it.timestamp in startDateMillis..endDateMillis }
+            if (customLogs.isNotEmpty()) {
+                val deAvg = customLogs.map { it.driveEndVibration }.average().toFloat()
+                val ndeAvg = customLogs.map { it.nonDriveEndVibration }.average().toFloat()
+                val mAvg = customLogs.map { it.motorBearingVibration }.average().toFloat()
+                val gAvg = customLogs.map { it.gearboxBearingVibration }.average().toFloat()
+                val bAvg = customLogs.map { it.bowlVibration }.average().toFloat()
+                val bTempAvg = customLogs.map { it.bearingTemp }.average().toFloat()
+                val mTempAvg = customLogs.map { it.motorTemp }.average().toFloat()
+
+                val greasedCount = customLogs.count { it.isGreased }
+                val total = customLogs.size
+                val abnormalCount = customLogs.count { it.soundState == "Abnormal" }
+                val leakCount = customLogs.count { it.hasLeakage }
+
+                reportValues = UnitReportValues(
+                    dev = deAvg, nde = ndeAvg, motorVib = mAvg, gearboxVib = gAvg, bowlVib = bAvg,
+                    bearingTemp = bTempAvg, motorTemp = mTempAvg,
+                    isGreased = greasedCount >= (total * 0.7),
+                    soundState = if (abnormalCount == 0) "Normal" else "Abnormal ($abnormalCount)",
+                    hasLeakage = leakCount > 0,
+                    greasingRatioText = "$greasedCount / $total pengukuran",
+                    soundRatioText = if (abnormalCount == 0) "Normal (100%)" else "$abnormalCount temuan",
+                    leakageRatioText = if (leakCount == 0) "Nihil (0)" else "$leakCount temuan"
+                )
+                avgVib = listOf(deAvg, ndeAvg, mAvg, gAvg, bAvg).average().toFloat()
+                avgTemp = listOf(bTempAvg, mTempAvg).average().toFloat()
+            } else {
+                reportValues = UnitReportValues(
+                    dev = 0.0f, nde = 0.0f, motorVib = 0.0f, gearboxVib = 0.0f, bowlVib = 0.0f,
+                    bearingTemp = 0.0f, motorTemp = 0.0f,
+                    isGreased = false, soundState = "-", hasLeakage = false,
+                    greasingRatioText = "Belum Ada Pengukuran",
+                    soundRatioText = "Belum Ada Pengukuran",
+                    leakageRatioText = "Belum Ada Pengukuran"
+                )
+                avgVib = 0.0f
+                avgTemp = 0.0f
+            }
+        }
     }
 
+    val customLogsCount = if (timeRangeSelection == 3) unitLogs.count { it.timestamp in startDateMillis..endDateMillis } else 0
     val alarmStatus = if (timeRangeSelection == 0 && !isMeasuredToday) {
         if (!unit.isRunning) "STANDBY" else "UNMEASURED"
-    } else if (!unit.isRunning && weeklyLogs.isEmpty() && monthlyLogs.isEmpty()) {
+    } else if (timeRangeSelection == 3 && customLogsCount == 0) {
+        if (!unit.isRunning) "STANDBY" else "UNMEASURED"
+    } else if (!unit.isRunning && weeklyLogs.isEmpty() && monthlyLogs.isEmpty() && customLogsCount == 0) {
         "STANDBY"
     } else if (avgVib >= unit.criticalVib || avgTemp >= unit.criticalTemp || (reportValues.dev ?: 0f) >= unit.criticalVib || (reportValues.bearingTemp ?: 0f) >= unit.criticalTemp) {
         "CRITICAL"
@@ -731,6 +777,102 @@ fun getUnitSummaryMetrics(
         latestTodayLog = latestTodayLog,
         todayLogCount = todayLogs.size
     )
+}
+
+@Composable
+fun DateRangeFilterPicker(
+    startDateMillis: Long,
+    endDateMillis: Long,
+    onPickStartDate: () -> Unit,
+    onPickEndDate: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Row(
+        modifier = modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        // Tanggal Mulai
+        Surface(
+            modifier = Modifier
+                .weight(1f)
+                .clickable { onPickStartDate() },
+            shape = RoundedCornerShape(8.dp),
+            color = Color(0xFFF8FAFC),
+            border = BorderStroke(1.dp, Color(0xFFCBD5E1))
+        ) {
+            Row(
+                modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Column {
+                    Text(
+                        text = "TANGGAL MULAI",
+                        fontSize = 8.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = SlateGrey
+                    )
+                    Text(
+                        text = WibDateUtils.format("dd MMM yyyy", startDateMillis),
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Color.Black
+                    )
+                }
+                Icon(
+                    imageVector = Icons.Default.CalendarToday,
+                    contentDescription = "Pilih Tanggal Mulai",
+                    tint = BrandGreen,
+                    modifier = Modifier.size(14.dp)
+                )
+            }
+        }
+
+        Icon(
+            imageVector = Icons.Default.ArrowForward,
+            contentDescription = null,
+            tint = Color.Gray,
+            modifier = Modifier.size(14.dp)
+        )
+
+        // Tanggal Akhir
+        Surface(
+            modifier = Modifier
+                .weight(1f)
+                .clickable { onPickEndDate() },
+            shape = RoundedCornerShape(8.dp),
+            color = Color(0xFFF8FAFC),
+            border = BorderStroke(1.dp, Color(0xFFCBD5E1))
+        ) {
+            Row(
+                modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Column {
+                    Text(
+                        text = "TANGGAL AKHIR",
+                        fontSize = 8.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = SlateGrey
+                    )
+                    Text(
+                        text = WibDateUtils.format("dd MMM yyyy", endDateMillis),
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Color.Black
+                    )
+                }
+                Icon(
+                    imageVector = Icons.Default.CalendarToday,
+                    contentDescription = "Pilih Tanggal Akhir",
+                    tint = BrandGreen,
+                    modifier = Modifier.size(14.dp)
+                )
+            }
+        }
+    }
 }
 
 @Composable
@@ -858,7 +1000,69 @@ fun DashboardScreen(
     val context = LocalContext.current
     var selectedUnitIndex by remember { mutableStateOf(0) } // Default to SC-01 (index 0)
     var trendTabSelection by remember { mutableStateOf(0) } // 0: Vibrasi (mm/s), 1: Suhu (°C)
-    var timeRangeSelection by remember { mutableStateOf(0) } // 0: Harian, 1: Seminggu, 2: Sebulan
+    var timeRangeSelection by remember { mutableStateOf(0) } // 0: Harian, 1: Seminggu, 2: Sebulan, 3: Tanggal
+
+    val todayStartMillis = remember { WibDateUtils.getStartOfDay() }
+    val todayEndMillis = remember { todayStartMillis + 24 * 60 * 60 * 1000L - 1L }
+    var customStartDate by remember { mutableStateOf(todayStartMillis) }
+    var customEndDate by remember { mutableStateOf(todayEndMillis) }
+
+    fun pickStartDate() {
+        val cal = WibDateUtils.getCalendar(customStartDate)
+        android.app.DatePickerDialog(
+            context,
+            { _, year, month, dayOfMonth ->
+                val newCal = WibDateUtils.getCalendar().apply {
+                    set(Calendar.YEAR, year)
+                    set(Calendar.MONTH, month)
+                    set(Calendar.DAY_OF_MONTH, dayOfMonth)
+                    set(Calendar.HOUR_OF_DAY, 0)
+                    set(Calendar.MINUTE, 0)
+                    set(Calendar.SECOND, 0)
+                    set(Calendar.MILLISECOND, 0)
+                }
+                val newStart = newCal.timeInMillis
+                customStartDate = newStart
+                if (customEndDate < newStart) {
+                    customEndDate = newStart + 24 * 60 * 60 * 1000L - 1L
+                }
+            },
+            cal.get(Calendar.YEAR),
+            cal.get(Calendar.MONTH),
+            cal.get(Calendar.DAY_OF_MONTH)
+        ).show()
+    }
+
+    fun pickEndDate() {
+        val cal = WibDateUtils.getCalendar(customEndDate)
+        android.app.DatePickerDialog(
+            context,
+            { _, year, month, dayOfMonth ->
+                val newCal = WibDateUtils.getCalendar().apply {
+                    set(Calendar.YEAR, year)
+                    set(Calendar.MONTH, month)
+                    set(Calendar.DAY_OF_MONTH, dayOfMonth)
+                    set(Calendar.HOUR_OF_DAY, 23)
+                    set(Calendar.MINUTE, 59)
+                    set(Calendar.SECOND, 59)
+                    set(Calendar.MILLISECOND, 999)
+                }
+                val newEnd = newCal.timeInMillis
+                customEndDate = newEnd
+                if (customStartDate > newEnd) {
+                    customStartDate = WibDateUtils.getCalendar(newEnd).apply {
+                        set(Calendar.HOUR_OF_DAY, 0)
+                        set(Calendar.MINUTE, 0)
+                        set(Calendar.SECOND, 0)
+                        set(Calendar.MILLISECOND, 0)
+                    }.timeInMillis
+                }
+            },
+            cal.get(Calendar.YEAR),
+            cal.get(Calendar.MONTH),
+            cal.get(Calendar.DAY_OF_MONTH)
+        ).show()
+    }
 
     var unitsState by remember {
         mutableStateOf(
@@ -1117,33 +1321,44 @@ fun DashboardScreen(
                 }
             }
 
-            // Get data lists based on time range selection (0: Hari Ini, 1: Seminggu, 2: Sebulan)
+            // 4. DATA TANGGAL KUSTOM: Filter data berdasarkan customStartDate..customEndDate
+            val customUnitLogs = unitAllLogs.filter { it.timestamp in customStartDate..customEndDate }.sortedBy { it.timestamp }
+            val customDevVibPoints = customUnitLogs.map { it.driveEndVibration }
+            val customNdevVibPoints = customUnitLogs.map { it.nonDriveEndVibration }
+            val customBearingTempPoints = customUnitLogs.map { it.bearingTemp }
+            val customGreasingPoints = customUnitLogs.map { if (it.isGreased) 100f else 0f }
+
+            // Get data lists based on time range selection (0: Hari Ini, 1: Seminggu, 2: Sebulan, 3: Tanggal)
             val devVibPoints = when (timeRangeSelection) {
                 0 -> dailyDevVibPoints
                 1 -> weeklyDevVibPoints
-                else -> monthlyDevVibPoints
+                2 -> monthlyDevVibPoints
+                else -> if (customDevVibPoints.isNotEmpty()) customDevVibPoints else listOf(selectedUnit.baseDeVib)
             }
             val ndevVibPoints = when (timeRangeSelection) {
                 0 -> dailyNdevVibPoints
                 1 -> weeklyNdevVibPoints
-                else -> monthlyNdevVibPoints
+                2 -> monthlyNdevVibPoints
+                else -> if (customNdevVibPoints.isNotEmpty()) customNdevVibPoints else listOf(selectedUnit.baseNdeVib)
             }
             val bearingTempPoints = when (timeRangeSelection) {
                 0 -> dailyBearingTempPoints
                 1 -> weeklyBearingTempPoints
-                else -> monthlyBearingTempPoints
+                2 -> monthlyBearingTempPoints
+                else -> if (customBearingTempPoints.isNotEmpty()) customBearingTempPoints else listOf(selectedUnit.baseBearingTemp)
             }
             val greasingPoints = when (timeRangeSelection) {
                 0 -> dailyGreasingPoints
                 1 -> weeklyGreasingPoints
-                else -> monthlyGreasingPoints
+                2 -> monthlyGreasingPoints
+                else -> if (customGreasingPoints.isNotEmpty()) customGreasingPoints else listOf(if (selectedUnit.isRunning) 100f else 0f)
             }
 
             val currentDev = devVibPoints.lastOrNull() ?: selectedUnit.baseDeVib
             val currentNdev = ndevVibPoints.lastOrNull() ?: selectedUnit.baseNdeVib
             val currentTemp = bearingTempPoints.lastOrNull() ?: selectedUnit.baseBearingTemp
 
-            val selectedUnitSummary = getUnitSummaryMetrics(selectedUnit, timeRangeSelection, vibrationLogs)
+            val selectedUnitSummary = getUnitSummaryMetrics(selectedUnit, timeRangeSelection, vibrationLogs, customStartDate, customEndDate)
             val reportValues = selectedUnitSummary.reportValues
             val isMeasuredToday = selectedUnitSummary.isMeasuredToday
             val latestTodayLog = selectedUnitSummary.latestTodayLog
@@ -1181,7 +1396,7 @@ fun DashboardScreen(
 
                     Spacer(modifier = Modifier.height(12.dp))
 
-                    // Pilihan Periode Report (Hari Ini | Seminggu | Sebulan) - DI ATAS "Pilih Unit Mesin"
+                    // Pilihan Periode Report (Hari Ini | Seminggu | Sebulan | Tanggal) - DI ATAS "Pilih Unit Mesin"
                     Text("Pilihan Periode Report:", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = SlateGrey)
                     Spacer(modifier = Modifier.height(4.dp))
                     Row(
@@ -1192,7 +1407,7 @@ fun DashboardScreen(
                             .padding(2.dp),
                         horizontalArrangement = Arrangement.spacedBy(4.dp)
                     ) {
-                        listOf("Hari Ini", "Seminggu", "Sebulan").forEachIndexed { index, label ->
+                        listOf("Hari Ini", "Seminggu", "Sebulan", "Tanggal").forEachIndexed { index, label ->
                             val isSelected = timeRangeSelection == index
                             Box(
                                 modifier = Modifier
@@ -1213,6 +1428,16 @@ fun DashboardScreen(
                         }
                     }
 
+                    if (timeRangeSelection == 3) {
+                        Spacer(modifier = Modifier.height(8.dp))
+                        DateRangeFilterPicker(
+                            startDateMillis = customStartDate,
+                            endDateMillis = customEndDate,
+                            onPickStartDate = { pickStartDate() },
+                            onPickEndDate = { pickEndDate() }
+                        )
+                    }
+
                     Spacer(modifier = Modifier.height(12.dp))
 
                     // horizontal selector for the 8 units
@@ -1227,7 +1452,7 @@ fun DashboardScreen(
                     ) {
                         unitsState.forEachIndexed { index, unit ->
                             val isSelected = index == selectedUnitIndex
-                            val summary = getUnitSummaryMetrics(unit, timeRangeSelection, vibrationLogs)
+                            val summary = getUnitSummaryMetrics(unit, timeRangeSelection, vibrationLogs, customStartDate, customEndDate)
 
                             val cardBg = if (isSelected) Color(0xFF86EFAC) else Color.White
                             val borderCol = if (isSelected) Color(0xFF16A34A) else Color(0xFFE2E8F0)
@@ -1270,7 +1495,7 @@ fun DashboardScreen(
                                         )
                                     }
 
-                                    val isZeroHariIni = timeRangeSelection == 0 && !summary.isMeasuredToday
+                                    val isZeroHariIni = (timeRangeSelection == 0 && !summary.isMeasuredToday) || (timeRangeSelection == 3 && summary.alarmStatus == "UNMEASURED")
                                     Text(
                                         text = if (isZeroHariIni) "0.0 mm/s"
                                                else if (unit.isRunning) "${String.format(Locale.US, "%.1f", summary.avgVib)} mm/s" 
@@ -1325,7 +1550,8 @@ fun DashboardScreen(
                                             }
                                         }
                                         1 -> "Rata-Rata Pengukuran Seminggu (7 Hari Terakhir)"
-                                        else -> "Rata-Rata Pengukuran Sebulan (Per Minggu Kebelakang)"
+                                        2 -> "Rata-Rata Pengukuran Sebulan (Per Minggu Kebelakang)"
+                                        else -> "Rata-Rata Pengukuran Periode (${WibDateUtils.format("dd MMM yyyy", customStartDate)} - ${WibDateUtils.format("dd MMM yyyy", customEndDate)})"
                                     }
                                     Text(
                                         text = subtitleText,
@@ -1334,7 +1560,7 @@ fun DashboardScreen(
                                     )
                                 }
 
-                                val hasValues = if (timeRangeSelection == 0) isMeasuredToday else (reportValues.dev != null && (reportValues.dev ?: 0f) > 0f)
+                                val hasValues = if (timeRangeSelection == 0) isMeasuredToday else if (timeRangeSelection == 3) (selectedUnitSummary.alarmStatus != "UNMEASURED") else (reportValues.dev != null && (reportValues.dev ?: 0f) > 0f)
                                 val isAbnormal = hasValues && (
                                     (reportValues.dev ?: 0f) > 4.0f ||
                                     (reportValues.nde ?: 0f) > 4.0f ||
@@ -1509,6 +1735,39 @@ fun DashboardScreen(
                                         }
                                     }
                                 }
+                            } else if (timeRangeSelection == 3 && customUnitLogs.isEmpty()) {
+                                Spacer(modifier = Modifier.height(10.dp))
+                                Card(
+                                    colors = CardDefaults.cardColors(containerColor = Color(0xFFFFFBEB)),
+                                    border = BorderStroke(1.dp, Color(0xFFFDE68A)),
+                                    shape = RoundedCornerShape(8.dp),
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    Row(
+                                        modifier = Modifier.padding(10.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.SpaceBetween
+                                    ) {
+                                        Row(
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            modifier = Modifier.weight(1f)
+                                        ) {
+                                            Icon(Icons.Default.Info, contentDescription = null, tint = BrandOrange, modifier = Modifier.size(16.dp))
+                                            Spacer(modifier = Modifier.width(6.dp))
+                                            Text(
+                                                text = "Belum ada pengukuran untuk ${selectedUnit.id} pada rentang tanggal yang dipilih.",
+                                                fontSize = 11.sp,
+                                                color = SlateGrey
+                                            )
+                                        }
+                                        TextButton(
+                                            onClick = { showVibDialog = true },
+                                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp)
+                                        ) {
+                                            Text("+ Input Ukur", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = BrandGreen)
+                                        }
+                                    }
+                                }
                             }
                         }
                     }
@@ -1537,7 +1796,8 @@ fun DashboardScreen(
                                     text = (if (selectedUnit.isRunning) "Mesin Beroperasi" else "Standby Mode") + " • " + when (timeRangeSelection) {
                                         0 -> "Periode Hari Ini"
                                         1 -> "Periode Seminggu"
-                                        else -> "Periode Sebulan (Rata-rata Perminggu)"
+                                        2 -> "Periode Sebulan (Rata-rata Perminggu)"
+                                        else -> "Periode ${WibDateUtils.format("dd/MM/yy", customStartDate)} - ${WibDateUtils.format("dd/MM/yy", customEndDate)}"
                                     },
                                     fontSize = 10.sp,
                                     color = Color.DarkGray
@@ -2073,7 +2333,7 @@ fun DashboardScreen(
                                         }
                                     }
                                 }
-                                else -> {
+                                2 -> {
                                     // Sebulan: 4 minggu kebelakang (Rata-rata per minggu)
                                     monthlyWeekIntervals.forEachIndexed { idx, week ->
                                         val isCurrentWeek = idx == 3
@@ -2095,6 +2355,50 @@ fun DashboardScreen(
                                                 fontSize = 7.sp,
                                                 color = if (isCurrentWeek) BrandGreen.copy(alpha = 0.85f) else Color.LightGray,
                                                 fontWeight = FontWeight.SemiBold
+                                            )
+                                        }
+                                    }
+                                }
+                                else -> {
+                                    // Tanggal Kustom
+                                    if (customUnitLogs.isNotEmpty()) {
+                                        if (customUnitLogs.size == 1) {
+                                            Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+                                                Text(
+                                                    text = "Pengukuran: ${WibDateUtils.format("dd/MM/yyyy HH:mm", customUnitLogs[0].timestamp)} WIB",
+                                                    fontSize = 9.sp,
+                                                    color = SlateGrey,
+                                                    fontWeight = FontWeight.Bold
+                                                )
+                                            }
+                                        } else {
+                                            customUnitLogs.forEachIndexed { idx, log ->
+                                                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                                    Text(
+                                                        text = "#${idx + 1}",
+                                                        fontSize = 8.5.sp,
+                                                        color = SlateGrey,
+                                                        fontWeight = FontWeight.Bold
+                                                    )
+                                                    Text(
+                                                        text = WibDateUtils.format("dd/MM", log.timestamp),
+                                                        fontSize = 8.sp,
+                                                        color = Color.Gray
+                                                    )
+                                                    Text(
+                                                        text = WibDateUtils.format("HH:mm", log.timestamp),
+                                                        fontSize = 7.5.sp,
+                                                        color = Color.LightGray
+                                                    )
+                                                }
+                                            }
+                                        }
+                                    } else {
+                                        Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+                                            Text(
+                                                text = "Periode: ${WibDateUtils.format("dd/MM/yy", customStartDate)} - ${WibDateUtils.format("dd/MM/yy", customEndDate)} (Tidak ada data)",
+                                                fontSize = 9.sp,
+                                                color = Color.Gray
                                             )
                                         }
                                     }
@@ -3269,7 +3573,8 @@ fun ChecklistScreen(
 // -----------------------------------------------------------------------------------------------------------------
 @Composable
 fun ReportCiltView(ciltHistory: List<CiltCheck>) {
-    var selectedPeriod by remember { mutableStateOf("Hari Ini") } // "Hari Ini", "Seminggu", "Sebulan"
+    val context = LocalContext.current
+    var selectedPeriod by remember { mutableStateOf("Hari Ini") } // "Hari Ini", "Seminggu", "Sebulan", "Tanggal"
     var selectedOperatorFilter by remember { mutableStateOf("Semua") } // "Semua", "Wahyu", "Abdul Aziz"
     var expandedLogId by remember { mutableStateOf<Long?>(null) }
 
@@ -3277,9 +3582,71 @@ fun ReportCiltView(ciltHistory: List<CiltCheck>) {
     val startOfToday = remember(now) {
         WibDateUtils.getStartOfDay(now)
     }
+    val todayEnd = remember(startOfToday) {
+        startOfToday + 24 * 3600 * 1000L - 1L
+    }
+    var customStartDate by remember { mutableStateOf(startOfToday) }
+    var customEndDate by remember { mutableStateOf(todayEnd) }
 
-    // Filter berdasarkan Periode (Hari Ini, Seminggu, Sebulan)
-    val periodFilteredChecks = remember(ciltHistory, selectedPeriod, now, startOfToday) {
+    fun pickStartDate() {
+        val cal = WibDateUtils.getCalendar(customStartDate)
+        android.app.DatePickerDialog(
+            context,
+            { _, year, month, dayOfMonth ->
+                val newCal = WibDateUtils.getCalendar().apply {
+                    set(Calendar.YEAR, year)
+                    set(Calendar.MONTH, month)
+                    set(Calendar.DAY_OF_MONTH, dayOfMonth)
+                    set(Calendar.HOUR_OF_DAY, 0)
+                    set(Calendar.MINUTE, 0)
+                    set(Calendar.SECOND, 0)
+                    set(Calendar.MILLISECOND, 0)
+                }
+                val newStart = newCal.timeInMillis
+                customStartDate = newStart
+                if (customEndDate < newStart) {
+                    customEndDate = newStart + 24 * 60 * 60 * 1000L - 1L
+                }
+            },
+            cal.get(Calendar.YEAR),
+            cal.get(Calendar.MONTH),
+            cal.get(Calendar.DAY_OF_MONTH)
+        ).show()
+    }
+
+    fun pickEndDate() {
+        val cal = WibDateUtils.getCalendar(customEndDate)
+        android.app.DatePickerDialog(
+            context,
+            { _, year, month, dayOfMonth ->
+                val newCal = WibDateUtils.getCalendar().apply {
+                    set(Calendar.YEAR, year)
+                    set(Calendar.MONTH, month)
+                    set(Calendar.DAY_OF_MONTH, dayOfMonth)
+                    set(Calendar.HOUR_OF_DAY, 23)
+                    set(Calendar.MINUTE, 59)
+                    set(Calendar.SECOND, 59)
+                    set(Calendar.MILLISECOND, 999)
+                }
+                val newEnd = newCal.timeInMillis
+                customEndDate = newEnd
+                if (customStartDate > newEnd) {
+                    customStartDate = WibDateUtils.getCalendar(newEnd).apply {
+                        set(Calendar.HOUR_OF_DAY, 0)
+                        set(Calendar.MINUTE, 0)
+                        set(Calendar.SECOND, 0)
+                        set(Calendar.MILLISECOND, 0)
+                    }.timeInMillis
+                }
+            },
+            cal.get(Calendar.YEAR),
+            cal.get(Calendar.MONTH),
+            cal.get(Calendar.DAY_OF_MONTH)
+        ).show()
+    }
+
+    // Filter berdasarkan Periode (Hari Ini, Seminggu, Sebulan, Tanggal)
+    val periodFilteredChecks = remember(ciltHistory, selectedPeriod, now, startOfToday, customStartDate, customEndDate) {
         when (selectedPeriod) {
             "Hari Ini" -> {
                 val daily = ciltHistory.filter { it.timestamp >= startOfToday || it.timestamp >= (now - 24 * 3600 * 1000L) }
@@ -3290,10 +3657,13 @@ fun ReportCiltView(ciltHistory: List<CiltCheck>) {
                 val weekly = ciltHistory.filter { it.timestamp >= weekThreshold }
                 if (weekly.isNotEmpty()) weekly else ciltHistory.take(6)
             }
-            else -> { // "Sebulan"
+            "Sebulan" -> {
                 val monthThreshold = now - 30L * 24 * 3600 * 1000L
                 val monthly = ciltHistory.filter { it.timestamp >= monthThreshold }
                 if (monthly.isNotEmpty()) monthly else ciltHistory
+            }
+            else -> { // "Tanggal"
+                ciltHistory.filter { it.timestamp in customStartDate..customEndDate }
             }
         }
     }
@@ -3308,16 +3678,19 @@ fun ReportCiltView(ciltHistory: List<CiltCheck>) {
     }
 
     // Label range tanggal periode WIB
-    val periodDateRangeText = remember(selectedPeriod, now) {
+    val periodDateRangeText = remember(selectedPeriod, now, customStartDate, customEndDate) {
         when (selectedPeriod) {
             "Hari Ini" -> "Hari Ini • ${WibDateUtils.format("dd MMM yyyy", now)}"
             "Seminggu" -> {
                 val weekStart = WibDateUtils.format("dd MMM", now - 7L * 24 * 3600 * 1000L)
                 "7 Hari Terakhir • $weekStart - ${WibDateUtils.format("dd MMM yyyy", now)}"
             }
-            else -> {
+            "Sebulan" -> {
                 val monthStart = WibDateUtils.format("dd MMM", now - 30L * 24 * 3600 * 1000L)
                 "30 Hari Terakhir • $monthStart - ${WibDateUtils.format("dd MMM yyyy", now)}"
+            }
+            else -> {
+                "${WibDateUtils.format("dd MMM yyyy", customStartDate)} - ${WibDateUtils.format("dd MMM yyyy", customEndDate)}"
             }
         }
     }
@@ -3379,10 +3752,18 @@ fun ReportCiltView(ciltHistory: List<CiltCheck>) {
     // - Hari Ini: Target Wahyu = 1, Abdul Aziz = 1 -> Total Target = 2
     // - Seminggu: Target Wahyu = 7, Abdul Aziz = 7 -> Total Target = 14
     // - Sebulan: Target Wahyu = 30, Abdul Aziz = 30 -> Total Target = 60
+    // - Tanggal: Target Wahyu = N hari, Abdul Aziz = N hari -> Total Target = 2 * N
+    val daysCount = remember(selectedPeriod, customStartDate, customEndDate) {
+        if (selectedPeriod == "Tanggal") {
+            val diff = (customEndDate - customStartDate).coerceAtLeast(0L)
+            (diff / (24 * 3600 * 1000L) + 1).toInt().coerceAtLeast(1)
+        } else 1
+    }
     val (wahyuTarget, abdulAzizTarget) = when (selectedPeriod) {
         "Hari Ini" -> Pair(1, 1)
         "Seminggu" -> Pair(7, 7)
-        else -> Pair(30, 30) // "Sebulan"
+        "Sebulan" -> Pair(30, 30)
+        else -> Pair(daysCount, daysCount)
     }
 
     val wahyuChecks = periodFilteredChecks.filter { it.operatorName.contains("Wahyu", ignoreCase = true) }
@@ -3443,7 +3824,7 @@ fun ReportCiltView(ciltHistory: List<CiltCheck>) {
                         )
                     }
 
-                    // 3 Tombol Periode Segmented: | Hari Ini | | Seminggu | | Sebulan |
+                    // 4 Tombol Periode Segmented: | Hari Ini | | Seminggu | | Sebulan | | Tanggal |
                     Surface(
                         modifier = Modifier.fillMaxWidth(),
                         shape = RoundedCornerShape(12.dp),
@@ -3455,7 +3836,7 @@ fun ReportCiltView(ciltHistory: List<CiltCheck>) {
                                 .padding(3.dp),
                             horizontalArrangement = Arrangement.spacedBy(4.dp)
                         ) {
-                            listOf("Hari Ini", "Seminggu", "Sebulan").forEach { period ->
+                            listOf("Hari Ini", "Seminggu", "Sebulan", "Tanggal").forEach { period ->
                                 val isSelected = selectedPeriod == period
                                 Box(
                                     modifier = Modifier
@@ -3469,13 +3850,22 @@ fun ReportCiltView(ciltHistory: List<CiltCheck>) {
                                 ) {
                                     Text(
                                         text = period,
-                                        fontSize = 13.sp,
+                                        fontSize = 12.sp,
                                         fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
                                         color = if (isSelected) Color.White else SlateGrey
                                     )
                                 }
                             }
                         }
+                    }
+
+                    if (selectedPeriod == "Tanggal") {
+                        DateRangeFilterPicker(
+                            startDateMillis = customStartDate,
+                            endDateMillis = customEndDate,
+                            onPickStartDate = { pickStartDate() },
+                            onPickEndDate = { pickEndDate() }
+                        )
                     }
 
                     // Filter Operator: Semua, Wahyu, Abdul Aziz
@@ -5365,12 +5755,75 @@ fun AbnormalityScreen(
     var tagType by remember { mutableStateOf("None") } // Default to None
 
     // State untuk sub-menu "Report"
-    var selectedPeriod by remember { mutableStateOf("Hari Ini") } // "Hari Ini", "Seminggu", "Sebulan", "Semua"
+    var selectedPeriod by remember { mutableStateOf("Hari Ini") } // "Hari Ini", "Seminggu", "Sebulan", "Tanggal"
     var selectedReportMachine by remember { mutableStateOf("Semua Mesin") }
     var reportMachineDropdownExpanded by remember { mutableStateOf(false) }
 
+    val context = LocalContext.current
     val now = System.currentTimeMillis()
-    val filteredReports = remember(reports, selectedPeriod, selectedReportMachine) {
+    val startOfToday = remember(now) { WibDateUtils.getStartOfDay(now) }
+    val endOfToday = remember(startOfToday) { startOfToday + 24 * 3600 * 1000L - 1L }
+    var customStartDate by remember { mutableStateOf(startOfToday) }
+    var customEndDate by remember { mutableStateOf(endOfToday) }
+
+    fun pickStartDate() {
+        val cal = WibDateUtils.getCalendar(customStartDate)
+        android.app.DatePickerDialog(
+            context,
+            { _, year, month, dayOfMonth ->
+                val newCal = WibDateUtils.getCalendar().apply {
+                    set(Calendar.YEAR, year)
+                    set(Calendar.MONTH, month)
+                    set(Calendar.DAY_OF_MONTH, dayOfMonth)
+                    set(Calendar.HOUR_OF_DAY, 0)
+                    set(Calendar.MINUTE, 0)
+                    set(Calendar.SECOND, 0)
+                    set(Calendar.MILLISECOND, 0)
+                }
+                val newStart = newCal.timeInMillis
+                customStartDate = newStart
+                if (customEndDate < newStart) {
+                    customEndDate = newStart + 24 * 60 * 60 * 1000L - 1L
+                }
+            },
+            cal.get(Calendar.YEAR),
+            cal.get(Calendar.MONTH),
+            cal.get(Calendar.DAY_OF_MONTH)
+        ).show()
+    }
+
+    fun pickEndDate() {
+        val cal = WibDateUtils.getCalendar(customEndDate)
+        android.app.DatePickerDialog(
+            context,
+            { _, year, month, dayOfMonth ->
+                val newCal = WibDateUtils.getCalendar().apply {
+                    set(Calendar.YEAR, year)
+                    set(Calendar.MONTH, month)
+                    set(Calendar.DAY_OF_MONTH, dayOfMonth)
+                    set(Calendar.HOUR_OF_DAY, 23)
+                    set(Calendar.MINUTE, 59)
+                    set(Calendar.SECOND, 59)
+                    set(Calendar.MILLISECOND, 999)
+                }
+                val newEnd = newCal.timeInMillis
+                customEndDate = newEnd
+                if (customStartDate > newEnd) {
+                    customStartDate = WibDateUtils.getCalendar(newEnd).apply {
+                        set(Calendar.HOUR_OF_DAY, 0)
+                        set(Calendar.MINUTE, 0)
+                        set(Calendar.SECOND, 0)
+                        set(Calendar.MILLISECOND, 0)
+                    }.timeInMillis
+                }
+            },
+            cal.get(Calendar.YEAR),
+            cal.get(Calendar.MONTH),
+            cal.get(Calendar.DAY_OF_MONTH)
+        ).show()
+    }
+
+    val filteredReports = remember(reports, selectedPeriod, selectedReportMachine, customStartDate, customEndDate) {
         reports.filter { r ->
             val inPeriod = when (selectedPeriod) {
                 "Hari Ini" -> {
@@ -5387,7 +5840,9 @@ fun AbnormalityScreen(
                 "Sebulan" -> {
                     r.timestamp >= (now - 30L * 24 * 3600 * 1000)
                 }
-                else -> true
+                else -> { // "Tanggal"
+                    r.timestamp in customStartDate..customEndDate
+                }
             }
             val inMachine = if (selectedReportMachine == "Semua Mesin") {
                 true
@@ -5398,7 +5853,11 @@ fun AbnormalityScreen(
         }
     }
 
-    val context = LocalContext.current
+    val periodDisplayLabel = remember(selectedPeriod, customStartDate, customEndDate) {
+        if (selectedPeriod == "Tanggal") {
+            "${WibDateUtils.format("dd/MM/yy", customStartDate)} - ${WibDateUtils.format("dd/MM/yy", customEndDate)}"
+        } else selectedPeriod
+    }
 
     Column(
         modifier = Modifier.fillMaxSize()
@@ -6115,14 +6574,14 @@ fun AbnormalityScreen(
                             }
                         }
 
-                        // PILIHAN PERIODE: HARIAN, MINGGUAN, BULANAN, SEMUA
+                        // PILIHAN PERIODE: HARIAN, MINGGUAN, BULANAN, TANGGAL
                         Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                             Text("Pilihan Periode Report :", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = SlateGrey)
                             Row(
                                 modifier = Modifier.fillMaxWidth(),
                                 horizontalArrangement = Arrangement.spacedBy(6.dp)
                             ) {
-                                listOf("Hari Ini", "Seminggu", "Sebulan", "Semua").forEach { period ->
+                                listOf("Hari Ini", "Seminggu", "Sebulan", "Tanggal").forEach { period ->
                                     val isSelected = selectedPeriod == period
                                     Box(
                                         modifier = Modifier
@@ -6143,6 +6602,15 @@ fun AbnormalityScreen(
                                         )
                                     }
                                 }
+                            }
+
+                            if (selectedPeriod == "Tanggal") {
+                                DateRangeFilterPicker(
+                                    startDateMillis = customStartDate,
+                                    endDateMillis = customEndDate,
+                                    onPickStartDate = { pickStartDate() },
+                                    onPickEndDate = { pickEndDate() }
+                                )
                             }
                         }
 
@@ -6327,7 +6795,7 @@ fun AbnormalityScreen(
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Text(
-                                text = "Akumulasi FMEA ($selectedPeriod • $selectedReportMachine)",
+                                text = "Akumulasi FMEA ($periodDisplayLabel • $selectedReportMachine)",
                                 fontSize = 12.sp,
                                 fontWeight = FontWeight.Bold,
                                 color = SlateGrey
@@ -6645,7 +7113,7 @@ fun AbnormalityScreen(
             // 3. DETAIL RINCIAN RIWAYAT LAPORAN YANG MEMBENTUK AKUMULASI
             item {
                 Text(
-                    text = "Rincian Data Laporan ($selectedPeriod • $selectedReportMachine) :",
+                    text = "Rincian Data Laporan ($periodDisplayLabel • $selectedReportMachine) :",
                     fontSize = 13.sp,
                     fontWeight = FontWeight.Bold,
                     color = SlateGrey
@@ -6674,7 +7142,7 @@ fun AbnormalityScreen(
                                 modifier = Modifier.size(36.dp)
                             )
                             Text(
-                                text = "Belum ada temuan abnormality untuk periode $selectedPeriod ($selectedReportMachine).",
+                                text = "Belum ada temuan abnormality untuk periode $periodDisplayLabel ($selectedReportMachine).",
                                 fontSize = 12.sp,
                                 fontWeight = FontWeight.Medium,
                                 color = SlateGrey,

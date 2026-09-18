@@ -2,19 +2,26 @@ package com.example.data
 
 import android.content.Context
 import android.util.Log
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.first
-import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 
-class Repository(private val db: AppDatabase) {
+class Repository(
+    private val db: AppDatabase,
+    private val scope: CoroutineScope = CoroutineScope(Dispatchers.IO)
+) {
     val ciltDao = db.ciltDao()
     val reliabilityPmDao = db.reliabilityPmDao()
     val abnormalityDao = db.abnormalityDao()
     val mentorPairingDao = db.mentorPairingDao()
     val vibrationDao = db.vibrationDao()
     val flushingDao = db.flushingDao()
+
+    val firestoreSyncManager = FirestoreSyncManager(db, scope)
 
     // Flow definitions for UI observation
     val allCiltChecks: Flow<List<CiltCheck>> = ciltDao.getAllChecks()
@@ -25,18 +32,28 @@ class Repository(private val db: AppDatabase) {
     val allFlushingLogs: Flow<List<FlushingLog>> = flushingDao.getAllLogs()
 
     // Offline / Online Sync State Management
-    private val _isOnline = MutableStateFlow(false) // default offline as Berau mill is remote
+    // Default online (true) so devices sync automatically via Firebase
+    private val _isOnline = MutableStateFlow(true)
     val isOnline: StateFlow<Boolean> = _isOnline
 
-    private val _syncStatus = MutableStateFlow("Data disimpan di database lokal")
+    private val _syncStatus = MutableStateFlow("Tersambung ke Cloud Firebase")
     val syncStatus: StateFlow<String> = _syncStatus
+
+    init {
+        // Start listening to real-time updates from Firebase so all phones stay in sync
+        firestoreSyncManager.startRealtimeSync()
+    }
 
     fun setOnlineMode(online: Boolean) {
         _isOnline.value = online
         if (online) {
-            _syncStatus.value = "Terhubung dengan Jakarta"
+            _syncStatus.value = "Tersambung ke Cloud Firebase"
+            firestoreSyncManager.startRealtimeSync()
+            scope.launch {
+                syncWithJakarta()
+            }
         } else {
-            _syncStatus.value = "Data disimpan di database lokal"
+            _syncStatus.value = "Mode Offline (Data tersimpan lokal)"
         }
     }
 
@@ -46,77 +63,115 @@ class Repository(private val db: AppDatabase) {
             return false
         }
 
-        _syncStatus.value = "Sedang sinkronisasi..."
-        delay(2000) // Realistic network delay simulation for remote Kalimantan mill
+        _syncStatus.value = "Menyinkronkan dengan Cloud..."
 
         try {
-            // Mark all items across tables as synced
-            ciltDao.markAllSynced()
-            reliabilityPmDao.markAllSynced()
-            abnormalityDao.markAllSynced()
-            mentorPairingDao.markAllSynced()
-            vibrationDao.markAllSynced()
-            flushingDao.markAllSynced()
-
-            _syncStatus.value = "Sinkronisasi Berhasil!"
-            return true
+            val pushSuccess = firestoreSyncManager.pushAllLocalDataToFirestore()
+            if (pushSuccess) {
+                _syncStatus.value = "Sinkronisasi Cloud Berhasil!"
+                return true
+            } else {
+                _syncStatus.value = "Sinkronisasi Cloud tersimpan (offline-queue)"
+                return true
+            }
         } catch (e: Exception) {
             Log.e("Repository", "Sync failed", e)
-            _syncStatus.value = "Kesalahan teknis sinkronisasi: ${e.localizedMessage}"
+            _syncStatus.value = "Kesalahan teknis: ${e.localizedMessage}"
             return false
         }
     }
 
-    // Helper to insert and handle local database state
+    // Helper to insert and handle local database state and push to Firebase
     suspend fun insertCiltCheck(check: CiltCheck) {
         val insertedId = ciltDao.insertCheck(check)
+        val insertedItem = check.copy(id = insertedId, isSynced = _isOnline.value)
         if (_isOnline.value) {
-            // Auto-sync single entry if online
-            ciltDao.markSynced(insertedId)
+            try {
+                firestoreSyncManager.pushCilt(insertedItem)
+                ciltDao.markSynced(insertedId)
+            } catch (e: Exception) {
+                Log.e("Repository", "Push CILT failed, queued locally", e)
+            }
         }
     }
 
     suspend fun insertReliabilityCheck(check: ReliabilityPmCheck) {
         val insertedId = reliabilityPmDao.insertCheck(check)
+        val insertedItem = check.copy(id = insertedId, isSynced = _isOnline.value)
         if (_isOnline.value) {
-            reliabilityPmDao.markSynced(insertedId)
+            try {
+                firestoreSyncManager.pushReliability(insertedItem)
+                reliabilityPmDao.markSynced(insertedId)
+            } catch (e: Exception) {
+                Log.e("Repository", "Push Reliability failed, queued locally", e)
+            }
         }
     }
 
     suspend fun insertAbnormalityReport(report: AbnormalityReport) {
         val insertedId = abnormalityDao.insertReport(report)
+        val insertedItem = report.copy(id = insertedId, isSynced = _isOnline.value)
         if (_isOnline.value) {
-            abnormalityDao.markSynced(insertedId)
+            try {
+                firestoreSyncManager.pushAbnormality(insertedItem)
+                abnormalityDao.markSynced(insertedId)
+            } catch (e: Exception) {
+                Log.e("Repository", "Push Abnormality failed, queued locally", e)
+            }
         }
     }
 
     suspend fun deleteAbnormalityReport(report: AbnormalityReport) {
         abnormalityDao.deleteReport(report)
+        if (_isOnline.value) {
+            firestoreSyncManager.deleteAbnormality(report)
+        }
     }
 
     suspend fun insertMentorPairingLog(log: MentorPairingLog) {
         val insertedId = mentorPairingDao.insertLog(log)
+        val insertedItem = log.copy(id = insertedId, isSynced = _isOnline.value)
         if (_isOnline.value) {
-            mentorPairingDao.markSynced(insertedId)
+            try {
+                firestoreSyncManager.pushMentorPairing(insertedItem)
+                mentorPairingDao.markSynced(insertedId)
+            } catch (e: Exception) {
+                Log.e("Repository", "Push Mentor failed, queued locally", e)
+            }
         }
     }
 
     suspend fun insertVibrationLog(log: VibrationLog) {
         val insertedId = vibrationDao.insertLog(log)
+        val insertedItem = log.copy(id = insertedId, isSynced = _isOnline.value)
         if (_isOnline.value) {
-            vibrationDao.markSynced(insertedId)
+            try {
+                firestoreSyncManager.pushVibration(insertedItem)
+                vibrationDao.markSynced(insertedId)
+            } catch (e: Exception) {
+                Log.e("Repository", "Push Vibration failed, queued locally", e)
+            }
         }
     }
 
     suspend fun insertFlushingLog(log: FlushingLog) {
         val insertedId = flushingDao.insertLog(log)
+        val insertedItem = log.copy(id = insertedId, isSynced = _isOnline.value)
         if (_isOnline.value) {
-            flushingDao.markSynced(insertedId)
+            try {
+                firestoreSyncManager.pushFlushing(insertedItem)
+                flushingDao.markSynced(insertedId)
+            } catch (e: Exception) {
+                Log.e("Repository", "Push Flushing failed, queued locally", e)
+            }
         }
     }
 
     suspend fun deleteFlushingLog(log: FlushingLog) {
         flushingDao.deleteLog(log)
+        if (_isOnline.value) {
+            firestoreSyncManager.deleteFlushing(log)
+        }
     }
 
     // Pre-populate realistic data if empty

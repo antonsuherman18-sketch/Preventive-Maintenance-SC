@@ -8,6 +8,12 @@ interface CiltDao {
     @Query("SELECT * FROM cilt_checks ORDER BY timestamp DESC")
     fun getAllChecks(): Flow<List<CiltCheck>>
 
+    @Query("SELECT * FROM cilt_checks ORDER BY timestamp DESC")
+    suspend fun getAllChecksList(): List<CiltCheck>
+
+    @Query("SELECT * FROM cilt_checks WHERE timestamp = :timestamp AND operatorName = :operatorName LIMIT 1")
+    suspend fun findByTimestampAndOperator(timestamp: Long, operatorName: String): CiltCheck?
+
     @Query("SELECT * FROM cilt_checks WHERE isSynced = 0")
     suspend fun getUnsyncedChecks(): List<CiltCheck>
 
@@ -26,6 +32,12 @@ interface ReliabilityPmDao {
     @Query("SELECT * FROM reliability_pm_checks ORDER BY timestamp DESC")
     fun getAllChecks(): Flow<List<ReliabilityPmCheck>>
 
+    @Query("SELECT * FROM reliability_pm_checks ORDER BY timestamp DESC")
+    suspend fun getAllChecksList(): List<ReliabilityPmCheck>
+
+    @Query("SELECT * FROM reliability_pm_checks WHERE timestamp = :timestamp LIMIT 1")
+    suspend fun findByTimestamp(timestamp: Long): ReliabilityPmCheck?
+
     @Query("SELECT * FROM reliability_pm_checks WHERE isSynced = 0")
     suspend fun getUnsyncedChecks(): List<ReliabilityPmCheck>
 
@@ -43,6 +55,12 @@ interface ReliabilityPmDao {
 interface AbnormalityDao {
     @Query("SELECT * FROM abnormality_reports ORDER BY timestamp DESC")
     fun getAllReports(): Flow<List<AbnormalityReport>>
+
+    @Query("SELECT * FROM abnormality_reports ORDER BY timestamp DESC")
+    suspend fun getAllReportsList(): List<AbnormalityReport>
+
+    @Query("SELECT * FROM abnormality_reports WHERE timestamp = :timestamp AND title = :title LIMIT 1")
+    suspend fun findByTimestampAndTitle(timestamp: Long, title: String): AbnormalityReport?
 
     @Query("SELECT * FROM abnormality_reports WHERE isSynced = 0")
     suspend fun getUnsyncedReports(): List<AbnormalityReport>
@@ -65,6 +83,12 @@ interface MentorPairingDao {
     @Query("SELECT * FROM mentor_pairing_logs ORDER BY timestamp DESC")
     fun getAllLogs(): Flow<List<MentorPairingLog>>
 
+    @Query("SELECT * FROM mentor_pairing_logs ORDER BY timestamp DESC")
+    suspend fun getAllLogsList(): List<MentorPairingLog>
+
+    @Query("SELECT * FROM mentor_pairing_logs WHERE timestamp = :timestamp AND menteeName = :menteeName LIMIT 1")
+    suspend fun findByTimestampAndMentee(timestamp: Long, menteeName: String): MentorPairingLog?
+
     @Query("SELECT * FROM mentor_pairing_logs WHERE isSynced = 0")
     suspend fun getUnsyncedLogs(): List<MentorPairingLog>
 
@@ -83,6 +107,12 @@ interface VibrationDao {
     @Query("SELECT * FROM vibration_logs ORDER BY timestamp DESC LIMIT 100")
     fun getVibrationHistory(): Flow<List<VibrationLog>>
 
+    @Query("SELECT * FROM vibration_logs ORDER BY timestamp DESC")
+    suspend fun getAllLogsList(): List<VibrationLog>
+
+    @Query("SELECT * FROM vibration_logs WHERE timestamp = :timestamp AND operatorName = :operatorName LIMIT 1")
+    suspend fun findByTimestampAndOperator(timestamp: Long, operatorName: String): VibrationLog?
+
     @Query("SELECT * FROM vibration_logs WHERE isSynced = 0")
     suspend fun getUnsyncedLogs(): List<VibrationLog>
 
@@ -100,6 +130,12 @@ interface VibrationDao {
 interface FlushingDao {
     @Query("SELECT * FROM flushing_logs ORDER BY timestamp DESC")
     fun getAllLogs(): Flow<List<FlushingLog>>
+
+    @Query("SELECT * FROM flushing_logs ORDER BY timestamp DESC")
+    suspend fun getAllLogsList(): List<FlushingLog>
+
+    @Query("SELECT * FROM flushing_logs WHERE timestamp = :timestamp AND unitName = :unitName LIMIT 1")
+    suspend fun findByTimestampAndUnit(timestamp: Long, unitName: String): FlushingLog?
 
     @Query("SELECT * FROM flushing_logs WHERE isSynced = 0")
     suspend fun getUnsyncedLogs(): List<FlushingLog>
