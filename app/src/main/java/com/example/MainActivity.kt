@@ -21,6 +21,13 @@ class MainActivity : ComponentActivity() {
         // Tetapkan Zona Waktu Default Aplikasi ke WIB (Waktu Indonesia Barat / UTC+7 / Asia/Jakarta)
         TimeZone.setDefault(TimeZone.getTimeZone("Asia/Jakarta"))
 
+        // Explicitly initialize FirebaseApp to ensure cloud sync runs immediately
+        try {
+            com.google.firebase.FirebaseApp.initializeApp(this)
+        } catch (e: Exception) {
+            android.util.Log.e("MainActivity", "FirebaseApp init error", e)
+        }
+
         enableEdgeToEdge()
 
         // Initialize Room Database and Repository

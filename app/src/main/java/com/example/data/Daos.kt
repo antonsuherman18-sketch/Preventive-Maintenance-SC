@@ -124,6 +124,9 @@ interface VibrationDao {
 
     @Query("UPDATE vibration_logs SET isSynced = 1")
     suspend fun markAllSynced()
+
+    @Delete
+    suspend fun deleteLog(log: VibrationLog)
 }
 
 @Dao

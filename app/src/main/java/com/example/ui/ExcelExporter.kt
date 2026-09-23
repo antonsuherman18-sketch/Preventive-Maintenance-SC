@@ -103,7 +103,11 @@ object ExcelExporter {
         filteredLogs.sortedByDescending { it.timestamp }.forEach { log ->
             val dateStr = dateFormat.format(Date(log.timestamp))
             val machineName = log.comments.lines().firstOrNull()?.take(30) ?: "SC Centrifuge"
-            val greasedStr = if (log.isGreased) "Sudah" else "Belum"
+            val greasedStr = when {
+                log.greasingStatus == "Belum Masuk Jadwal" -> "Belum Masuk Jadwal"
+                log.greasingStatus == "Ya" || log.isGreased -> "Sudah"
+                else -> "Belum"
+            }
             val leakStr = if (log.hasLeakage) "Ada Kebocoran" else "Normal"
 
             sb.append(log.id).append(",")
@@ -163,7 +167,7 @@ object ExcelExporter {
         }
         sb.append("Total Data:,").append(filteredChecks.size).append("\n\n")
 
-        sb.append("ID,Timestamp,Waktu,Operator,Nozzle Cleaned,Bowl Cleaned,Area Cleaned,Nozzle Checked,Vibration Checked,Leak Checked,Instrument Checked,Bearing Greased,Coupling Greased,Oil Level Checked,Nozzle Bolts Tightened,Fitting Pipes Tightened,Belt Tension Checked,Catatan / Temuan\n")
+        sb.append("ID,Timestamp,Waktu,Operator,Area Bersih (Sludge/Oli),Mesin Bebas Kerak,Drainase Tidak Sumbat,Catatan Cleaning,Vibrasi & Suara Normal,Temperatur Normal,Tidak Ada Kebocoran,Kondisi Komponen Baik,Catatan Inspection,Greasing Sesuai Jadwal,Level Oli Normal,Catatan Lubrication,Baut Pondasi Dikencangkan,Tidak Ada Baut Longgar/Lepas,Catatan Tightening,Catatan Umum\n")
 
         filteredChecks.sortedByDescending { it.timestamp }.forEach { c ->
             val dateStr = dateFormat.format(Date(c.timestamp))
@@ -173,19 +177,21 @@ object ExcelExporter {
                 .append(c.timestamp).append(",")
                 .append(escapeCsv(dateStr)).append(",")
                 .append(escapeCsv(c.operatorName)).append(",")
-                .append(bStr(c.nozzleCleaned)).append(",")
-                .append(bStr(c.bowlCleaned)).append(",")
-                .append(bStr(c.areaCleaned)).append(",")
-                .append(bStr(c.nozzleChecked)).append(",")
-                .append(bStr(c.vibrationChecked)).append(",")
-                .append(bStr(c.leakChecked)).append(",")
-                .append(bStr(c.instrumentChecked)).append(",")
-                .append(bStr(c.bearingGreased)).append(",")
-                .append(bStr(c.couplingGreased)).append(",")
-                .append(bStr(c.oilLevelChecked)).append(",")
-                .append(bStr(c.nozzleBoltsTightened)).append(",")
-                .append(bStr(c.fittingPipesTightened)).append(",")
-                .append(bStr(c.beltTensionChecked)).append(",")
+                .append(bStr(c.isAreaCleaned)).append(",")
+                .append(bStr(c.isMachineCleaned)).append(",")
+                .append(bStr(c.isDrainageCleaned)).append(",")
+                .append(escapeCsv(c.cleaningNotes)).append(",")
+                .append(bStr(c.isVibrationSoundChecked)).append(",")
+                .append(bStr(c.isTemperatureChecked)).append(",")
+                .append(bStr(c.isLeakChecked)).append(",")
+                .append(bStr(c.isComponentsConditionChecked)).append(",")
+                .append(escapeCsv(c.inspectionNotes)).append(",")
+                .append(bStr(c.isGreasingBearingChecked)).append(",")
+                .append(bStr(c.isOilLevelChecked)).append(",")
+                .append(escapeCsv(c.lubricationNotes)).append(",")
+                .append(bStr(c.isFoundationBoltsTightened)).append(",")
+                .append(bStr(c.isNoLooseBoltsChecked)).append(",")
+                .append(escapeCsv(c.tighteningNotes)).append(",")
                 .append(escapeCsv(c.comments)).append("\n")
         }
 
@@ -378,7 +384,11 @@ object ExcelExporter {
         filteredVib.sortedByDescending { it.timestamp }.forEach { log ->
             val dateStr = dateFormat.format(Date(log.timestamp))
             val machineName = log.comments.lines().firstOrNull()?.take(30) ?: "SC Centrifuge"
-            val greasedStr = if (log.isGreased) "Sudah" else "Belum"
+            val greasedStr = when {
+                log.greasingStatus == "Belum Masuk Jadwal" -> "Belum Masuk Jadwal"
+                log.greasingStatus == "Ya" || log.isGreased -> "Sudah"
+                else -> "Belum"
+            }
             val leakStr = if (log.hasLeakage) "Ada Kebocoran" else "Normal"
             sb.append(log.id).append(",")
                 .append(log.timestamp).append(",")

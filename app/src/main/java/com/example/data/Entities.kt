@@ -1,6 +1,7 @@
 package com.example.data
 
 import androidx.room.Entity
+import androidx.room.Ignore
 import androidx.room.PrimaryKey
 
 @Entity(tableName = "cilt_checks")
@@ -8,22 +9,61 @@ data class CiltCheck(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
     val timestamp: Long = System.currentTimeMillis(),
     val operatorName: String,
+
+    // 1. Cleaning (Pembersihan)
+    val areaCleaned: Boolean = false, // Area Sekitar Mesin Sludge Centrifuge bersih dari tumpahan sludge dan oli
+    val machineCleaned: Boolean = false, // Seluruh mesin dan area disekitarnya bersih dari kerak
+    val drainageCleaned: Boolean = false, // Drainase tidak sumbat
+    val cleaningNotes: String = "", // Catatan temuan saat cleaning
+
+    // 2. Inspection (Inspeksi)
+    val vibrationSoundChecked: Boolean = false, // Vibrasi dan suara normal
+    val temperatureChecked: Boolean = false, // Temperatur bearing dan motor dalam batas normal
+    val leakChecked: Boolean = false, // Tidak ada kebocoran pada pipa, valve, tranfluid coupling, gland packing
+    val componentsConditionChecked: Boolean = false, // Nozzle, nozzle holder, belt, coupling, cover, baut dalam kondisi baik
+    val inspectionNotes: String = "", // Catatan temuan saat inspection
+
+    // 3. Lubrication (Pelumasan)
+    val greasingBearingChecked: Boolean = false, // Greasing bearing sesuai jadwal dan takaran
+    val oilLevelChecked: Boolean = false, // Level oli transfluid kopling dalam batas normal
+    val lubricationNotes: String = "", // Catatan temuan saat lubrication
+
+    // 4. Tightening (Pengencangan)
+    val foundationBoltsTightened: Boolean = false, // Baut pondasi mesin, cover, flange, nozzle holder, motor, coupling dikencangkan sesuai kebutuhan
+    val noLooseBoltsChecked: Boolean = false, // Tidak ada baut longgar dan lepas (tidak terpasang)
+    val tighteningNotes: String = "", // Catatan temuan saat tightening
+
+    // Legacy fields preserved for schema backward compatibility
     val nozzleCleaned: Boolean = false,
     val bowlCleaned: Boolean = false,
-    val areaCleaned: Boolean = false,
     val nozzleChecked: Boolean = false,
     val vibrationChecked: Boolean = false,
-    val leakChecked: Boolean = false,
     val instrumentChecked: Boolean = false,
     val bearingGreased: Boolean = false,
     val couplingGreased: Boolean = false,
-    val oilLevelChecked: Boolean = false,
     val nozzleBoltsTightened: Boolean = false,
     val fittingPipesTightened: Boolean = false,
     val beltTensionChecked: Boolean = false,
+
     val comments: String = "",
     val isSynced: Boolean = false
-)
+) {
+    // Backward-compatible computed properties (ignored by Room)
+    @get:Ignore val isAreaCleaned: Boolean get() = areaCleaned
+    @get:Ignore val isMachineCleaned: Boolean get() = machineCleaned || bowlCleaned
+    @get:Ignore val isDrainageCleaned: Boolean get() = drainageCleaned || nozzleCleaned
+
+    @get:Ignore val isVibrationSoundChecked: Boolean get() = vibrationSoundChecked || vibrationChecked
+    @get:Ignore val isTemperatureChecked: Boolean get() = temperatureChecked || instrumentChecked
+    @get:Ignore val isLeakChecked: Boolean get() = leakChecked
+    @get:Ignore val isComponentsConditionChecked: Boolean get() = componentsConditionChecked || nozzleChecked
+
+    @get:Ignore val isGreasingBearingChecked: Boolean get() = greasingBearingChecked || bearingGreased
+    @get:Ignore val isOilLevelChecked: Boolean get() = oilLevelChecked
+
+    @get:Ignore val isFoundationBoltsTightened: Boolean get() = foundationBoltsTightened || nozzleBoltsTightened
+    @get:Ignore val isNoLooseBoltsChecked: Boolean get() = noLooseBoltsChecked || fittingPipesTightened
+}
 
 @Entity(tableName = "reliability_pm_checks")
 data class ReliabilityPmCheck(
@@ -86,6 +126,7 @@ data class VibrationLog(
     val bearingTemp: Float, // C (normal < 70)
     val motorTemp: Float = 0f,
     val isGreased: Boolean = false,
+    val greasingStatus: String = if (isGreased) "Ya" else "Tidak",
     val soundState: String = "Normal", // Normal, Abnormal
     val hasLeakage: Boolean = false,
     val alarmState: String, // Normal, Warning, Critical

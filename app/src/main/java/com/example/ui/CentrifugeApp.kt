@@ -567,16 +567,21 @@ fun getUnitSummaryMetrics(
                 val mTempAvg = todayLogs.map { it.motorTemp }.average().toFloat()
 
                 val isGreased = latestTodayLog?.isGreased ?: true
+                val greasingStatus = latestTodayLog?.greasingStatus ?: (if (isGreased) "Ya" else "Tidak")
                 val soundState = latestTodayLog?.soundState ?: "Normal"
                 val hasLeakage = latestTodayLog?.hasLeakage ?: false
 
                 reportValues = UnitReportValues(
                     dev = deAvg, nde = ndeAvg, motorVib = mAvg, gearboxVib = gAvg, bowlVib = bAvg,
                     bearingTemp = bTempAvg, motorTemp = mTempAvg,
-                    isGreased = isGreased,
+                    isGreased = if (greasingStatus == "Belum Masuk Jadwal") true else isGreased,
                     soundState = soundState,
                     hasLeakage = hasLeakage,
-                    greasingRatioText = if (isGreased) "Sudah Dilakukan" else "Belum Dilakukan",
+                    greasingRatioText = when {
+                        greasingStatus == "Belum Masuk Jadwal" -> "Belum Masuk Jadwal"
+                        isGreased -> "Sudah Dilakukan"
+                        else -> "Belum Dilakukan"
+                    },
                     soundRatioText = soundState,
                     leakageRatioText = if (hasLeakage) "Ada Kebocoran" else "Tidak Ada"
                 )
@@ -2648,10 +2653,20 @@ fun DashboardScreen(
                                         horizontalArrangement = Arrangement.spacedBy(8.dp),
                                         verticalAlignment = Alignment.CenterVertically
                                     ) {
+                                        val greasingLabel = when {
+                                            log.greasingStatus == "Belum Masuk Jadwal" -> "Belum Masuk Jadwal"
+                                            log.greasingStatus == "Ya" || log.isGreased -> "Ya"
+                                            else -> "Tidak"
+                                        }
+                                        val greasingColor = when {
+                                            log.greasingStatus == "Belum Masuk Jadwal" -> Color.Gray
+                                            log.greasingStatus == "Ya" || log.isGreased -> BrandGreen
+                                            else -> BrandRed
+                                        }
                                         Text(
-                                            text = "Greasing: ${if (log.isGreased) "Ya" else "Tidak"}",
+                                            text = "Greasing: $greasingLabel",
                                             fontSize = 10.sp,
-                                            color = if (log.isGreased) BrandGreen else BrandRed,
+                                            color = greasingColor,
                                             fontWeight = FontWeight.Medium
                                         )
                                         Text(
@@ -2726,7 +2741,7 @@ fun DashboardScreen(
             var bowlVib by remember { mutableStateOf("") }
             var bTemp by remember { mutableStateOf("") }
             var mTemp by remember { mutableStateOf("") }
-            var isGreasedSelection by remember { mutableStateOf(false) }
+            var greasingSelection by remember { mutableStateOf("Belum Masuk Jadwal") }
             var soundSelection by remember { mutableStateOf("Normal") }
             var hasLeakageSelection by remember { mutableStateOf(false) }
             var comments by remember { mutableStateOf("") }
@@ -2941,68 +2956,106 @@ fun DashboardScreen(
                         modifier = Modifier.fillMaxWidth(),
                         verticalArrangement = Arrangement.spacedBy(10.dp)
                     ) {
-                        // Greasing : |Ya| |Tidak|
+                        // Greasing : |Ya| |Tidak| and below: |Belum Masuk Jadwal|
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
+                            verticalAlignment = Alignment.Top
                         ) {
                             Text(
                                 text = "Greasing :",
                                 fontSize = 12.sp,
                                 fontWeight = FontWeight.Bold,
                                 color = SlateGrey,
-                                modifier = Modifier.width(95.dp)
+                                modifier = Modifier
+                                    .width(95.dp)
+                                    .padding(top = 8.dp)
                             )
-                            Row(
+                            Column(
                                 modifier = Modifier.weight(1f),
-                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                verticalArrangement = Arrangement.spacedBy(6.dp)
                             ) {
-                                // Ya (Warna Hijau)
-                                val yaSelected = isGreasedSelection
-                                Card(
-                                    modifier = Modifier
-                                        .weight(1f)
-                                        .clickable { isGreasedSelection = true }
-                                        .testTag("greasing_ya_button"),
-                                    colors = CardDefaults.cardColors(
-                                        containerColor = if (yaSelected) Color(0xFF2E7D32) else Color(0xFFE8F5E9)
-                                    ),
-                                    shape = RoundedCornerShape(8.dp),
-                                    border = BorderStroke(
-                                        if (yaSelected) 2.dp else 1.dp,
-                                        if (yaSelected) Color(0xFF1B5E20) else Color(0xFFA5D6A7)
-                                    )
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
                                 ) {
-                                    Box(
+                                    // Ya (Warna Hijau)
+                                    val yaSelected = greasingSelection == "Ya"
+                                    Card(
                                         modifier = Modifier
-                                            .fillMaxWidth()
-                                            .padding(vertical = 8.dp),
-                                        contentAlignment = Alignment.Center
-                                    ) {
-                                        Text(
-                                            text = "Ya",
-                                            fontSize = 12.sp,
-                                            fontWeight = if (yaSelected) FontWeight.ExtraBold else FontWeight.Bold,
-                                            color = if (yaSelected) Color.White else Color(0xFF1B5E20)
+                                            .weight(1f)
+                                            .clickable { greasingSelection = "Ya" }
+                                            .testTag("greasing_ya_button"),
+                                        colors = CardDefaults.cardColors(
+                                            containerColor = if (yaSelected) Color(0xFF2E7D32) else Color(0xFFE8F5E9)
+                                        ),
+                                        shape = RoundedCornerShape(8.dp),
+                                        border = BorderStroke(
+                                            if (yaSelected) 2.dp else 1.dp,
+                                            if (yaSelected) Color(0xFF1B5E20) else Color(0xFFA5D6A7)
                                         )
+                                    ) {
+                                        Box(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .padding(vertical = 8.dp),
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            Text(
+                                                text = "Ya",
+                                                fontSize = 12.sp,
+                                                fontWeight = if (yaSelected) FontWeight.ExtraBold else FontWeight.Bold,
+                                                color = if (yaSelected) Color.White else Color(0xFF1B5E20)
+                                            )
+                                        }
+                                    }
+
+                                    // Tidak (Warna Merah)
+                                    val tidakSelected = greasingSelection == "Tidak"
+                                    Card(
+                                        modifier = Modifier
+                                            .weight(1f)
+                                            .clickable { greasingSelection = "Tidak" }
+                                            .testTag("greasing_tidak_button"),
+                                        colors = CardDefaults.cardColors(
+                                            containerColor = if (tidakSelected) Color(0xFFD32F2F) else Color(0xFFFFEBEE)
+                                        ),
+                                        shape = RoundedCornerShape(8.dp),
+                                        border = BorderStroke(
+                                            if (tidakSelected) 2.dp else 1.dp,
+                                            if (tidakSelected) Color(0xFFB71C1C) else Color(0xFFFFCDD2)
+                                        )
+                                    ) {
+                                        Box(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .padding(vertical = 8.dp),
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            Text(
+                                                text = "Tidak",
+                                                fontSize = 12.sp,
+                                                fontWeight = if (tidakSelected) FontWeight.ExtraBold else FontWeight.Bold,
+                                                color = if (tidakSelected) Color.White else Color(0xFFB71C1C)
+                                            )
+                                        }
                                     }
                                 }
 
-                                // Tidak (Warna Merah)
-                                val tidakSelected = !isGreasedSelection
+                                // Belum Masuk Jadwal (Tepat dibawah tulisan |Ya| dan |Tidak|, warna abu-abu jika dipilih)
+                                val belumMasukJadwalSelected = greasingSelection == "Belum Masuk Jadwal"
                                 Card(
                                     modifier = Modifier
-                                        .weight(1f)
-                                        .clickable { isGreasedSelection = false }
-                                        .testTag("greasing_tidak_button"),
+                                        .fillMaxWidth()
+                                        .clickable { greasingSelection = "Belum Masuk Jadwal" }
+                                        .testTag("greasing_belum_masuk_jadwal_button"),
                                     colors = CardDefaults.cardColors(
-                                        containerColor = if (tidakSelected) Color(0xFFD32F2F) else Color(0xFFFFEBEE)
+                                        containerColor = if (belumMasukJadwalSelected) Color(0xFF757575) else Color(0xFFF5F5F5)
                                     ),
                                     shape = RoundedCornerShape(8.dp),
                                     border = BorderStroke(
-                                        if (tidakSelected) 2.dp else 1.dp,
-                                        if (tidakSelected) Color(0xFFB71C1C) else Color(0xFFFFCDD2)
+                                        if (belumMasukJadwalSelected) 2.dp else 1.dp,
+                                        if (belumMasukJadwalSelected) Color(0xFF424242) else Color(0xFFE0E0E0)
                                     )
                                 ) {
                                     Box(
@@ -3012,10 +3065,10 @@ fun DashboardScreen(
                                         contentAlignment = Alignment.Center
                                     ) {
                                         Text(
-                                            text = "Tidak",
+                                            text = "Belum Masuk Jadwal",
                                             fontSize = 12.sp,
-                                            fontWeight = if (tidakSelected) FontWeight.ExtraBold else FontWeight.Bold,
-                                            color = if (tidakSelected) Color.White else Color(0xFFB71C1C)
+                                            fontWeight = if (belumMasukJadwalSelected) FontWeight.ExtraBold else FontWeight.Bold,
+                                            color = if (belumMasukJadwalSelected) Color.White else Color(0xFF616161)
                                         )
                                     }
                                 }
@@ -3419,7 +3472,8 @@ fun DashboardScreen(
                                         bowlVibration = bowlVibValue,
                                         bearingTemp = bTempValue,
                                         motorTemp = mTempValue,
-                                        isGreased = isGreasedSelection,
+                                        isGreased = (greasingSelection == "Ya"),
+                                        greasingStatus = greasingSelection,
                                         soundState = soundSelection,
                                         hasLeakage = hasLeakageSelection,
                                         alarmState = alarm,
@@ -3699,60 +3753,55 @@ fun ReportCiltView(ciltHistory: List<CiltCheck>) {
     val totalChecks = finalFilteredChecks.size
     fun countCheckCompleted(c: CiltCheck): Int {
         var count = 0
-        if (c.nozzleCleaned) count++
-        if (c.bowlCleaned) count++
-        if (c.areaCleaned) count++
-        if (c.nozzleChecked) count++
-        if (c.vibrationChecked) count++
-        if (c.leakChecked) count++
-        if (c.instrumentChecked) count++
-        if (c.bearingGreased) count++
-        if (c.couplingGreased) count++
-        if (c.oilLevelChecked) count++
-        if (c.nozzleBoltsTightened) count++
-        if (c.fittingPipesTightened) count++
-        if (c.beltTensionChecked) count++
+        if (c.isAreaCleaned) count++
+        if (c.isMachineCleaned) count++
+        if (c.isDrainageCleaned) count++
+        if (c.isVibrationSoundChecked) count++
+        if (c.isTemperatureChecked) count++
+        if (c.isLeakChecked) count++
+        if (c.isComponentsConditionChecked) count++
+        if (c.isGreasingBearingChecked) count++
+        if (c.isOilLevelChecked) count++
+        if (c.isFoundationBoltsTightened) count++
+        if (c.isNoLooseBoltsChecked) count++
         return count
     }
 
-    // 1. Cleaning
-    val nozzleCleanedCount = finalFilteredChecks.count { it.nozzleCleaned }
-    val bowlCleanedCount = finalFilteredChecks.count { it.bowlCleaned }
-    val areaCleanedCount = finalFilteredChecks.count { it.areaCleaned }
-    val totalCleaningDone = nozzleCleanedCount + bowlCleanedCount + areaCleanedCount
+    // 1. Cleaning (3 items)
+    val areaCleanedCount = finalFilteredChecks.count { it.isAreaCleaned }
+    val machineCleanedCount = finalFilteredChecks.count { it.isMachineCleaned }
+    val drainageCleanedCount = finalFilteredChecks.count { it.isDrainageCleaned }
+    val totalCleaningDone = areaCleanedCount + machineCleanedCount + drainageCleanedCount
     val cleaningRate = if (totalChecks > 0) (totalCleaningDone * 100) / (totalChecks * 3) else 0
 
-    // 2. Inspection
-    val nozzleCheckedCount = finalFilteredChecks.count { it.nozzleChecked }
-    val vibrationCheckedCount = finalFilteredChecks.count { it.vibrationChecked }
-    val leakCheckedCount = finalFilteredChecks.count { it.leakChecked }
-    val instrumentCheckedCount = finalFilteredChecks.count { it.instrumentChecked }
-    val totalInspectionDone = nozzleCheckedCount + vibrationCheckedCount + leakCheckedCount + instrumentCheckedCount
+    // 2. Inspection (4 items)
+    val vibrationSoundCount = finalFilteredChecks.count { it.isVibrationSoundChecked }
+    val tempCount = finalFilteredChecks.count { it.isTemperatureChecked }
+    val leakCount = finalFilteredChecks.count { it.isLeakChecked }
+    val componentsCount = finalFilteredChecks.count { it.isComponentsConditionChecked }
+    val totalInspectionDone = vibrationSoundCount + tempCount + leakCount + componentsCount
     val inspectionRate = if (totalChecks > 0) (totalInspectionDone * 100) / (totalChecks * 4) else 0
 
-    // 3. Lubrication
-    val bearingGreasedCount = finalFilteredChecks.count { it.bearingGreased }
-    val couplingGreasedCount = finalFilteredChecks.count { it.couplingGreased }
-    val oilLevelCheckedCount = finalFilteredChecks.count { it.oilLevelChecked }
-    val totalLubricationDone = bearingGreasedCount + couplingGreasedCount + oilLevelCheckedCount
-    val lubricationRate = if (totalChecks > 0) (totalLubricationDone * 100) / (totalChecks * 3) else 0
+    // 3. Lubrication (2 items)
+    val greasingBearingCount = finalFilteredChecks.count { it.isGreasingBearingChecked }
+    val oilLevelCount = finalFilteredChecks.count { it.isOilLevelChecked }
+    val totalLubricationDone = greasingBearingCount + oilLevelCount
+    val lubricationRate = if (totalChecks > 0) (totalLubricationDone * 100) / (totalChecks * 2) else 0
 
-    // 4. Tightening
-    val nozzleBoltsTightenedCount = finalFilteredChecks.count { it.nozzleBoltsTightened }
-    val fittingPipesTightenedCount = finalFilteredChecks.count { it.fittingPipesTightened }
-    val beltTensionCheckedCount = finalFilteredChecks.count { it.beltTensionChecked }
-    val totalTighteningDone = nozzleBoltsTightenedCount + fittingPipesTightenedCount + beltTensionCheckedCount
-    val tighteningRate = if (totalChecks > 0) (totalTighteningDone * 100) / (totalChecks * 3) else 0
+    // 4. Tightening (2 items)
+    val foundationBoltsCount = finalFilteredChecks.count { it.isFoundationBoltsTightened }
+    val noLooseBoltsCount = finalFilteredChecks.count { it.isNoLooseBoltsChecked }
+    val totalTighteningDone = foundationBoltsCount + noLooseBoltsCount
+    val tighteningRate = if (totalChecks > 0) (totalTighteningDone * 100) / (totalChecks * 2) else 0
 
     // Notes count in filtered checks
-    val notesCount = finalFilteredChecks.count { it.comments.replace("[Pagi]", "").replace("[Malam]", "").trim().isNotBlank() }
+    val notesCount = finalFilteredChecks.count {
+        it.comments.replace("[Pagi]", "").replace("[Malam]", "").trim().isNotBlank() ||
+        it.cleaningNotes.isNotBlank() || it.inspectionNotes.isNotBlank() ||
+        it.lubricationNotes.isNotBlank() || it.tighteningNotes.isNotBlank()
+    }
 
     // Operator Contribution & Target Calculations
-    // Aturan Target CILT:
-    // - Hari Ini: Target Wahyu = 1, Abdul Aziz = 1 -> Total Target = 2
-    // - Seminggu: Target Wahyu = 7, Abdul Aziz = 7 -> Total Target = 14
-    // - Sebulan: Target Wahyu = 30, Abdul Aziz = 30 -> Total Target = 60
-    // - Tanggal: Target Wahyu = N hari, Abdul Aziz = N hari -> Total Target = 2 * N
     val daysCount = remember(selectedPeriod, customStartDate, customEndDate) {
         if (selectedPeriod == "Tanggal") {
             val diff = (customEndDate - customStartDate).coerceAtLeast(0L)
@@ -3769,12 +3818,12 @@ fun ReportCiltView(ciltHistory: List<CiltCheck>) {
     val wahyuChecks = periodFilteredChecks.filter { it.operatorName.contains("Wahyu", ignoreCase = true) }
     val wahyuActual = wahyuChecks.size
     val wahyuExecutionRate = if (wahyuTarget > 0) (wahyuActual.toFloat() / wahyuTarget.toFloat() * 100f) else 0f
-    val wahyuCompliance = if (wahyuChecks.isNotEmpty()) (wahyuChecks.sumOf { countCheckCompleted(it) } * 100) / (wahyuChecks.size * 13) else 0
+    val wahyuCompliance = if (wahyuChecks.isNotEmpty()) (wahyuChecks.sumOf { countCheckCompleted(it) } * 100) / (wahyuChecks.size * 11) else 0
 
     val abdulAzizChecks = periodFilteredChecks.filter { it.operatorName.contains("Abdul", ignoreCase = true) }
     val abdulAzizActual = abdulAzizChecks.size
     val abdulAzizExecutionRate = if (abdulAzizTarget > 0) (abdulAzizActual.toFloat() / abdulAzizTarget.toFloat() * 100f) else 0f
-    val abdulAzizCompliance = if (abdulAzizChecks.isNotEmpty()) (abdulAzizChecks.sumOf { countCheckCompleted(it) } * 100) / (abdulAzizChecks.size * 13) else 0
+    val abdulAzizCompliance = if (abdulAzizChecks.isNotEmpty()) (abdulAzizChecks.sumOf { countCheckCompleted(it) } * 100) / (abdulAzizChecks.size * 11) else 0
 
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
@@ -3944,6 +3993,39 @@ fun ReportCiltView(ciltHistory: List<CiltCheck>) {
                         )
                     }
 
+                    if (selectedPeriod == "Hari Ini") {
+                        val missingToday = mutableListOf<String>()
+                        if (wahyuActual == 0) missingToday.add("Wahyu")
+                        if (abdulAzizActual == 0) missingToday.add("Abdul Aziz")
+                        if (missingToday.isNotEmpty()) {
+                            Surface(
+                                color = Color(0xFFFFEBEE),
+                                shape = RoundedCornerShape(10.dp),
+                                border = BorderStroke(1.dp, Color(0xFFFFCDD2)),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(10.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.WarningAmber,
+                                        contentDescription = null,
+                                        tint = Color(0xFFD32F2F),
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Text(
+                                        text = "Operator belum CILT hari ini: ${missingToday.joinToString(", ")} (saat jam pengecekan ${WibDateUtils.format("HH:mm", now)} WIB)",
+                                        fontSize = 11.5.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = Color(0xFFB71C1C)
+                                    )
+                                }
+                            }
+                        }
+                    }
+
                     if (selectedOperatorFilter == "Semua") {
                         Row(
                             modifier = Modifier.fillMaxWidth(),
@@ -4064,9 +4146,9 @@ fun ReportCiltView(ciltHistory: List<CiltCheck>) {
                         title = "Cleaning (Pembersihan)",
                         rate = cleaningRate,
                         items = listOf(
-                            "Pembersihan Nozzle & Holder" to "$nozzleCleanedCount / $totalChecks",
-                            "Pembersihan Bowl & Endapan" to "$bowlCleanedCount / $totalChecks",
-                            "Pembersihan Area Luar Mesin" to "$areaCleanedCount / $totalChecks"
+                            "Area Bersih dari Sludge & Oli" to "$areaCleanedCount / $totalChecks",
+                            "Mesin Bebas dari Kerak" to "$machineCleanedCount / $totalChecks",
+                            "Drainase Tidak Sumbat" to "$drainageCleanedCount / $totalChecks"
                         )
                     )
 
@@ -4078,10 +4160,10 @@ fun ReportCiltView(ciltHistory: List<CiltCheck>) {
                         title = "Inspection (Inspeksi)",
                         rate = inspectionRate,
                         items = listOf(
-                            "Inspeksi Keausan Nozzle" to "$nozzleCheckedCount / $totalChecks",
-                            "Inspeksi Getaran & Suara Mesin" to "$vibrationCheckedCount / $totalChecks",
-                            "Inspeksi Kebocoran Seal & Fitting" to "$leakCheckedCount / $totalChecks",
-                            "Inspeksi Pressure Gauge & Instrumen" to "$instrumentCheckedCount / $totalChecks"
+                            "Vibrasi & Suara Normal" to "$vibrationSoundCount / $totalChecks",
+                            "Temperatur Bearing & Motor Normal" to "$tempCount / $totalChecks",
+                            "Tidak Ada Kebocoran Pipa/Valve/Coupling" to "$leakCount / $totalChecks",
+                            "Nozzle/Belt/Coupling Kondisi Baik" to "$componentsCount / $totalChecks"
                         )
                     )
 
@@ -4093,9 +4175,8 @@ fun ReportCiltView(ciltHistory: List<CiltCheck>) {
                         title = "Lubrication (Pelumasan)",
                         rate = lubricationRate,
                         items = listOf(
-                            "Greasing Bearing Buffer Penuh" to "$bearingGreasedCount / $totalChecks",
-                            "Greasing Coupling Transfluid" to "$couplingGreasedCount / $totalChecks",
-                            "Pengecekan Level Oli Coupling" to "$oilLevelCheckedCount / $totalChecks"
+                            "Greasing Bearing Sesuai Jadwal & Takaran" to "$greasingBearingCount / $totalChecks",
+                            "Level Oli Transfluid Kopling Normal" to "$oilLevelCount / $totalChecks"
                         )
                     )
 
@@ -4107,9 +4188,8 @@ fun ReportCiltView(ciltHistory: List<CiltCheck>) {
                         title = "Tightening (Pengencangan)",
                         rate = tighteningRate,
                         items = listOf(
-                            "Baut Pengunci Nozzle Holder" to "$nozzleBoltsTightenedCount / $totalChecks",
-                            "Fitting Pipa & Valve Sambungan" to "$fittingPipesTightenedCount / $totalChecks",
-                            "Ketegangan V-Belt (>50 N)" to "$beltTensionCheckedCount / $totalChecks"
+                            "Baut Pondasi & Komponen Dikencangkan" to "$foundationBoltsCount / $totalChecks",
+                            "Tidak Ada Baut Longgar & Lepas" to "$noLooseBoltsCount / $totalChecks"
                         )
                     )
                 }
@@ -4168,7 +4248,7 @@ fun ReportCiltView(ciltHistory: List<CiltCheck>) {
         } else {
             items(finalFilteredChecks, key = { it.id }) { check ->
                 val completedCount = countCheckCompleted(check)
-                val isPerfect = completedCount == 13
+                val isPerfect = completedCount == 11
                 val isExpanded = expandedLogId == check.id
 
                 val shift = remember(check.comments) {
@@ -4235,7 +4315,7 @@ fun ReportCiltView(ciltHistory: List<CiltCheck>) {
                                     .padding(horizontal = 8.dp, vertical = 3.dp)
                             ) {
                                 Text(
-                                    text = if (isPerfect) "13/13 (100% OK)" else "$completedCount/13 Item",
+                                    text = if (isPerfect) "11/11 (100% OK)" else "$completedCount/11 Item",
                                     fontSize = 11.sp,
                                     fontWeight = FontWeight.Bold,
                                     color = if (isPerfect) Color(0xFF166534) else Color(0xFF92400E)
@@ -4248,15 +4328,88 @@ fun ReportCiltView(ciltHistory: List<CiltCheck>) {
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.spacedBy(6.dp)
                         ) {
-                            val cOk = check.nozzleCleaned && check.bowlCleaned && check.areaCleaned
-                            val iOk = check.nozzleChecked && check.vibrationChecked && check.leakChecked && check.instrumentChecked
-                            val lOk = check.bearingGreased && check.couplingGreased && check.oilLevelChecked
-                            val tOk = check.nozzleBoltsTightened && check.fittingPipesTightened && check.beltTensionChecked
+                            val cOk = check.isAreaCleaned && check.isMachineCleaned && check.isDrainageCleaned
+                            val iOk = check.isVibrationSoundChecked && check.isTemperatureChecked && check.isLeakChecked && check.isComponentsConditionChecked
+                            val lOk = check.isGreasingBearingChecked && check.isOilLevelChecked
+                            val tOk = check.isFoundationBoltsTightened && check.isNoLooseBoltsChecked
 
                             PillarStatusChip("C", cOk, Modifier.weight(1f))
                             PillarStatusChip("I", iOk, Modifier.weight(1f))
                             PillarStatusChip("L", lOk, Modifier.weight(1f))
                             PillarStatusChip("T", tOk, Modifier.weight(1f))
+                        }
+
+                        // Catatan Temuan Khusus Kategori jika diisi
+                        if (check.cleaningNotes.isNotBlank()) {
+                            Surface(
+                                shape = RoundedCornerShape(6.dp),
+                                color = Color(0xFFF0F9FF),
+                                border = BorderStroke(1.dp, Color(0xFFBAE6FD)),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                ) {
+                                    Text("Temuan Cleaning:", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = Color(0xFF0284C7))
+                                    Text(check.cleaningNotes, fontSize = 10.sp, color = Color(0xFF0C4A6E))
+                                }
+                            }
+                        }
+
+                        if (check.inspectionNotes.isNotBlank()) {
+                            Surface(
+                                shape = RoundedCornerShape(6.dp),
+                                color = Color(0xFFFFF7ED),
+                                border = BorderStroke(1.dp, Color(0xFFFED7AA)),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                ) {
+                                    Text("Temuan Inspection:", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = Color(0xFFEA580C))
+                                    Text(check.inspectionNotes, fontSize = 10.sp, color = Color(0xFF7C2D12))
+                                }
+                            }
+                        }
+
+                        if (check.lubricationNotes.isNotBlank()) {
+                            Surface(
+                                shape = RoundedCornerShape(6.dp),
+                                color = Color(0xFFFAF5FF),
+                                border = BorderStroke(1.dp, Color(0xFFE9D5FF)),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                ) {
+                                    Text("Temuan Lubrication:", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = Color(0xFF7C3AED))
+                                    Text(check.lubricationNotes, fontSize = 10.sp, color = Color(0xFF581C87))
+                                }
+                            }
+                        }
+
+                        if (check.tighteningNotes.isNotBlank()) {
+                            Surface(
+                                shape = RoundedCornerShape(6.dp),
+                                color = Color(0xFFECFDF5),
+                                border = BorderStroke(1.dp, Color(0xFFA7F3D0)),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                ) {
+                                    Text("Temuan Tightening:", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = Color(0xFF059669))
+                                    Text(check.tighteningNotes, fontSize = 10.sp, color = Color(0xFF064E3B))
+                                }
+                            }
                         }
 
                         if (cleanNotes.isNotBlank()) {
@@ -4299,7 +4452,7 @@ fun ReportCiltView(ciltHistory: List<CiltCheck>) {
                                 horizontalArrangement = Arrangement.spacedBy(2.dp)
                             ) {
                                 Text(
-                                    text = if (isExpanded) "Sembunyikan Rincian" else "Lihat 13 Rincian Item",
+                                    text = if (isExpanded) "Sembunyikan Rincian" else "Lihat 11 Rincian Item",
                                     fontSize = 10.sp,
                                     fontWeight = FontWeight.SemiBold,
                                     color = BrandGreen
@@ -4313,7 +4466,7 @@ fun ReportCiltView(ciltHistory: List<CiltCheck>) {
                             }
                         }
 
-                        // Accordion Rincian 13 Item
+                        // Accordion Rincian 11 Item
                         if (isExpanded) {
                             Surface(
                                 modifier = Modifier.fillMaxWidth(),
@@ -4326,19 +4479,21 @@ fun ReportCiltView(ciltHistory: List<CiltCheck>) {
                                     verticalArrangement = Arrangement.spacedBy(4.dp)
                                 ) {
                                     Text("Rincian Checklist Lapangan:", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = SlateGrey)
-                                    CheckDetailRow("Bersihkan nozzle & holder", check.nozzleCleaned)
-                                    CheckDetailRow("Bersihkan cover bowl & kerak", check.bowlCleaned)
-                                    CheckDetailRow("Bersihkan area luar & tumpahan", check.areaCleaned)
-                                    CheckDetailRow("Inspeksi keausan & ukuran nozzle", check.nozzleChecked)
-                                    CheckDetailRow("Inspeksi getaran & suara abnormal", check.vibrationChecked)
-                                    CheckDetailRow("Inspeksi kebocoran seal & packing", check.leakChecked)
-                                    CheckDetailRow("Inspeksi pressure & suhu instrumen", check.instrumentChecked)
-                                    CheckDetailRow("Greasing bearing buffer penuh", check.bearingGreased)
-                                    CheckDetailRow("Greasing coupling transfluid", check.couplingGreased)
-                                    CheckDetailRow("Cek level & kondisi oli", check.oilLevelChecked)
-                                    CheckDetailRow("Kencangkan baut nozzle holder", check.nozzleBoltsTightened)
-                                    CheckDetailRow("Kencangkan fitting pipa & valve", check.fittingPipesTightened)
-                                    CheckDetailRow("Pengecekan ketegangan V-belt", check.beltTensionChecked)
+                                    // 1. Cleaning
+                                    CheckDetailRow("Area sekitar bersih dari sludge & oli", check.isAreaCleaned)
+                                    CheckDetailRow("Seluruh mesin & area bebas kerak", check.isMachineCleaned)
+                                    CheckDetailRow("Drainase tidak sumbat", check.isDrainageCleaned)
+                                    // 2. Inspection
+                                    CheckDetailRow("Vibrasi & suara normal", check.isVibrationSoundChecked)
+                                    CheckDetailRow("Temperatur bearing & motor normal", check.isTemperatureChecked)
+                                    CheckDetailRow("Tidak ada kebocoran pipa/valve/coupling/packing", check.isLeakChecked)
+                                    CheckDetailRow("Nozzle, holder, belt, coupling, baut baik", check.isComponentsConditionChecked)
+                                    // 3. Lubrication
+                                    CheckDetailRow("Greasing bearing sesuai jadwal & takaran", check.isGreasingBearingChecked)
+                                    CheckDetailRow("Level oli transfluid kopling normal", check.isOilLevelChecked)
+                                    // 4. Tightening
+                                    CheckDetailRow("Baut pondasi mesin, cover, flange dikencangkan", check.isFoundationBoltsTightened)
+                                    CheckDetailRow("Tidak ada baut longgar & lepas (tidak terpasang)", check.isNoLooseBoltsChecked)
                                 }
                             }
                         }
@@ -4573,200 +4728,52 @@ private fun PillarReportItem(
 
 @Composable
 fun DailyCiltForm(onSave: (CiltCheck) -> Unit, history: List<CiltCheck>) {
+    val displayedHistory = remember(history) {
+        history.sortedByDescending { it.timestamp }.take(10)
+    }
+
     var operatorName by remember { mutableStateOf("Wahyu") }
     var shiftSelection by remember { mutableStateOf("Pagi") }
-    var selectedUnit by remember { mutableStateOf("SC-01") }
-    var comments by remember { mutableStateOf("") }
 
-    // Cleaning checklists
-    var nozzleCleaned by remember { mutableStateOf(false) }
-    var bowlCleaned by remember { mutableStateOf(false) }
+    // Cleaning checklists (3 items)
     var areaCleaned by remember { mutableStateOf(false) }
+    var machineCleaned by remember { mutableStateOf(false) }
+    var drainageCleaned by remember { mutableStateOf(false) }
+    var cleaningNotes by remember { mutableStateOf("") }
 
-    // Inspection checklists
-    var nozzleChecked by remember { mutableStateOf(false) }
-    var vibrationChecked by remember { mutableStateOf(false) }
+    // Inspection checklists (4 items)
+    var vibrationSoundChecked by remember { mutableStateOf(false) }
+    var temperatureChecked by remember { mutableStateOf(false) }
     var leakChecked by remember { mutableStateOf(false) }
-    var instrumentChecked by remember { mutableStateOf(false) }
+    var componentsConditionChecked by remember { mutableStateOf(false) }
+    var inspectionNotes by remember { mutableStateOf("") }
 
-    // Lubrication checklists
-    var bearingGreased by remember { mutableStateOf(false) }
-    var couplingGreased by remember { mutableStateOf(false) }
+    // Lubrication checklists (2 items)
+    var greasingBearingChecked by remember { mutableStateOf(false) }
     var oilLevelChecked by remember { mutableStateOf(false) }
+    var lubricationNotes by remember { mutableStateOf("") }
 
-    // Tightening checklists
-    var nozzleBoltsTightened by remember { mutableStateOf(false) }
-    var fittingPipesTightened by remember { mutableStateOf(false) }
-    var beltTensionChecked by remember { mutableStateOf(false) }
+    // Tightening checklists (2 items)
+    var foundationBoltsTightened by remember { mutableStateOf(false) }
+    var noLooseBoltsChecked by remember { mutableStateOf(false) }
+    var tighteningNotes by remember { mutableStateOf("") }
 
     // Real-time calculation
     val completedCount = listOf(
-        nozzleCleaned, bowlCleaned, areaCleaned,
-        nozzleChecked, vibrationChecked, leakChecked, instrumentChecked,
-        bearingGreased, couplingGreased, oilLevelChecked,
-        nozzleBoltsTightened, fittingPipesTightened, beltTensionChecked
+        areaCleaned, machineCleaned, drainageCleaned,
+        vibrationSoundChecked, temperatureChecked, leakChecked, componentsConditionChecked,
+        greasingBearingChecked, oilLevelChecked,
+        foundationBoltsTightened, noLooseBoltsChecked
     ).count { it }
-    val totalItems = 13
-    val completionPercent = (completedCount * 100) / totalItems
+    val totalItems = 11
+    val completionPercent = if (totalItems > 0) (completedCount * 100) / totalItems else 0
     val allCompleted = completedCount == totalItems
 
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
         verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
-        // A. HERO PROGRESS & QUICK ACTION CARD
-        item {
-            Card(
-                colors = CardDefaults.cardColors(containerColor = Color.White),
-                shape = RoundedCornerShape(20.dp),
-                border = BorderStroke(1.dp, if (allCompleted) Color(0xFF86EFAC) else Color(0xFFE2E8F0)),
-                elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
-            ) {
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(16.dp),
-                    verticalArrangement = Arrangement.spacedBy(12.dp)
-                ) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Column {
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(6.dp)
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.FactCheck,
-                                    contentDescription = null,
-                                    tint = BrandGreen,
-                                    modifier = Modifier.size(18.dp)
-                                )
-                                Text(
-                                    text = "Formulir CILT Centrifuge",
-                                    fontSize = 15.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = SlateGrey
-                                )
-                            }
-                            Text(
-                                text = "Standar Perawatan Mandiri Harian • Mill 6321",
-                                fontSize = 11.sp,
-                                color = Color.Gray
-                            )
-                        }
-
-                        Surface(
-                            shape = RoundedCornerShape(10.dp),
-                            color = if (allCompleted) Color(0xFFDCFCE7) else if (completedCount > 0) Color(0xFFFEF3C7) else Color(0xFFF1F5F9),
-                            border = BorderStroke(1.dp, if (allCompleted) Color(0xFF86EFAC) else Color(0xFFCBD5E1))
-                        ) {
-                            Text(
-                                text = if (allCompleted) "✓ 100% Lengkap" else "$completedCount/$totalItems Selesai",
-                                fontSize = 12.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = if (allCompleted) Color(0xFF166534) else if (completedCount > 0) Color(0xFF92400E) else SlateGrey,
-                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp)
-                            )
-                        }
-                    }
-
-                    // Progress Bar
-                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween
-                        ) {
-                            Text(
-                                text = "Kemajuan Checklist",
-                                fontSize = 11.sp,
-                                color = Color.Gray,
-                                fontWeight = FontWeight.Medium
-                            )
-                            Text(
-                                text = "$completionPercent%",
-                                fontSize = 11.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = if (allCompleted) Color(0xFF166534) else BrandGreen
-                            )
-                        }
-                        LinearProgressIndicator(
-                            progress = { (completedCount.toFloat() / totalItems.toFloat()).coerceIn(0f, 1f) },
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(8.dp)
-                                .clip(RoundedCornerShape(4.dp)),
-                            color = if (allCompleted) Color(0xFF16A34A) else BrandGreen,
-                            trackColor = Color(0xFFF1F5F9)
-                        )
-                    }
-
-                    // Quick Action Buttons Row
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        OutlinedButton(
-                            onClick = {
-                                nozzleCleaned = true
-                                bowlCleaned = true
-                                areaCleaned = true
-                                nozzleChecked = true
-                                vibrationChecked = true
-                                leakChecked = true
-                                instrumentChecked = true
-                                bearingGreased = true
-                                couplingGreased = true
-                                oilLevelChecked = true
-                                nozzleBoltsTightened = true
-                                fittingPipesTightened = true
-                                beltTensionChecked = true
-                            },
-                            modifier = Modifier.weight(1f),
-                            shape = RoundedCornerShape(10.dp),
-                            border = BorderStroke(1.dp, BrandGreen),
-                            colors = ButtonDefaults.outlinedButtonColors(contentColor = BrandGreen),
-                            contentPadding = PaddingValues(vertical = 8.dp, horizontal = 10.dp)
-                        ) {
-                            Icon(Icons.Default.DoneAll, contentDescription = null, modifier = Modifier.size(16.dp))
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Text("Centang Semua", fontSize = 12.sp, fontWeight = FontWeight.Bold)
-                        }
-
-                        OutlinedButton(
-                            onClick = {
-                                nozzleCleaned = false
-                                bowlCleaned = false
-                                areaCleaned = false
-                                nozzleChecked = false
-                                vibrationChecked = false
-                                leakChecked = false
-                                instrumentChecked = false
-                                bearingGreased = false
-                                couplingGreased = false
-                                oilLevelChecked = false
-                                nozzleBoltsTightened = false
-                                fittingPipesTightened = false
-                                beltTensionChecked = false
-                            },
-                            modifier = Modifier.weight(1f),
-                            shape = RoundedCornerShape(10.dp),
-                            border = BorderStroke(1.dp, Color(0xFFCBD5E1)),
-                            colors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFF64748B)),
-                            contentPadding = PaddingValues(vertical = 8.dp, horizontal = 10.dp)
-                        ) {
-                            Icon(Icons.Default.Refresh, contentDescription = null, modifier = Modifier.size(16.dp))
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Text("Reset", fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
-                        }
-                    }
-                }
-            }
-        }
-
-        // B. OPERATOR, SHIFT, & UNIT MESIN SELECTION CARD
+        // OPERATOR & SHIFT SELECTION CARD
         item {
             Card(
                 colors = CardDefaults.cardColors(containerColor = Color.White),
@@ -4781,7 +4788,7 @@ fun DailyCiltForm(onSave: (CiltCheck) -> Unit, history: List<CiltCheck>) {
                     verticalArrangement = Arrangement.spacedBy(14.dp)
                 ) {
                     Text(
-                        text = "Informasi Pelaksana & Unit Mesin",
+                        text = "Informasi Pelaksana & Shift",
                         fontSize = 14.sp,
                         fontWeight = FontWeight.Bold,
                         color = SlateGrey
@@ -4892,44 +4899,6 @@ fun DailyCiltForm(onSave: (CiltCheck) -> Unit, history: List<CiltCheck>) {
                             }
                         }
                     }
-
-                    // 3. Pilih Unit Centrifuge (SC-01 s/d SC-08)
-                    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                        Text(
-                            text = "Unit Centrifuge :",
-                            fontSize = 12.sp,
-                            fontWeight = FontWeight.SemiBold,
-                            color = Color.Gray
-                        )
-                        LazyRow(
-                            horizontalArrangement = Arrangement.spacedBy(6.dp),
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            val units = listOf("Semua SC", "SC-01", "SC-02", "SC-03", "SC-04", "SC-05", "SC-06", "SC-07", "SC-08")
-                            items(units) { u ->
-                                val isUnitSelected = selectedUnit == u
-                                Surface(
-                                    modifier = Modifier
-                                        .clip(RoundedCornerShape(8.dp))
-                                        .clickable { selectedUnit = u },
-                                    color = if (isUnitSelected) BrandGreen else Color(0xFFF1F5F9),
-                                    shape = RoundedCornerShape(8.dp),
-                                    border = BorderStroke(
-                                        width = 1.dp,
-                                        color = if (isUnitSelected) BrandGreen else Color(0xFFCBD5E1)
-                                    )
-                                ) {
-                                    Text(
-                                        text = u,
-                                        fontSize = 11.sp,
-                                        fontWeight = if (isUnitSelected) FontWeight.Bold else FontWeight.Medium,
-                                        color = if (isUnitSelected) Color.White else SlateGrey,
-                                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
-                                    )
-                                }
-                            }
-                        }
-                    }
                 }
             }
         }
@@ -4941,10 +4910,13 @@ fun DailyCiltForm(onSave: (CiltCheck) -> Unit, history: List<CiltCheck>) {
                 icon = Icons.Default.CleaningServices,
                 accentColor = Color(0xFF0284C7),
                 items = listOf(
-                    ChecklistRowItem("Bersihkan nozzle & nozzle holder (bebas dari sumbatan pasir/serat)", nozzleCleaned) { nozzleCleaned = it },
-                    ChecklistRowItem("Bersihkan cover bowl & bagian dalam bowl dari endapan keras", bowlCleaned) { bowlCleaned = it },
-                    ChecklistRowItem("Bersihkan area luar mesin dari tumpahan minyak/sludge", areaCleaned) { areaCleaned = it }
-                )
+                    ChecklistRowItem("Area Sekitar Mesin Sludge Centrifuge bersih dari tumpahan sludge dan oli", areaCleaned) { areaCleaned = it },
+                    ChecklistRowItem("Seluruh mesin dan area disekitarnya bersih dari kerak", machineCleaned) { machineCleaned = it },
+                    ChecklistRowItem("Drainase tidak sumbat", drainageCleaned) { drainageCleaned = it }
+                ),
+                notesValue = cleaningNotes,
+                onNotesChange = { cleaningNotes = it },
+                notesPlaceholder = "Tuliskan temuan saat melakukan cleaning (contoh: genangan oli di dekat fondasi, kerak tebal di bowl, dll)..."
             )
         }
 
@@ -4955,11 +4927,14 @@ fun DailyCiltForm(onSave: (CiltCheck) -> Unit, history: List<CiltCheck>) {
                 icon = Icons.Default.Search,
                 accentColor = Color(0xFFEA580C),
                 items = listOf(
-                    ChecklistRowItem("Periksa keausan nozzle & diameter male nut", nozzleChecked) { nozzleChecked = it },
-                    ChecklistRowItem("Periksa getaran & suara tidak normal saat mesin beroperasi", vibrationChecked) { vibrationChecked = it },
-                    ChecklistRowItem("Periksa kebocoran seal, packing, sambungan fitting pipa & valve", leakChecked) { leakChecked = it },
-                    ChecklistRowItem("Periksa pressure gauge, suhu, & level oli gearbox", instrumentChecked) { instrumentChecked = it }
-                )
+                    ChecklistRowItem("Vibrasi dan suara normal", vibrationSoundChecked) { vibrationSoundChecked = it },
+                    ChecklistRowItem("Temperatur bearing dan motor dalam batas normal", temperatureChecked) { temperatureChecked = it },
+                    ChecklistRowItem("Tidak ada kebocoran pada pipa, valve, tranfluid coupling, gland packing", leakChecked) { leakChecked = it },
+                    ChecklistRowItem("Nozzle, nozzle holder, belt, coupling, cover, baut dalam kondisi baik", componentsConditionChecked) { componentsConditionChecked = it }
+                ),
+                notesValue = inspectionNotes,
+                onNotesChange = { inspectionNotes = it },
+                notesPlaceholder = "Tuliskan temuan saat melakukan inspection (contoh: getaran naik, suara mendesing, kebocoran packing pipa, dll)..."
             )
         }
 
@@ -4970,10 +4945,12 @@ fun DailyCiltForm(onSave: (CiltCheck) -> Unit, history: List<CiltCheck>) {
                 icon = Icons.Default.Opacity,
                 accentColor = Color(0xFF7C3AED),
                 items = listOf(
-                    ChecklistRowItem("Pemberian grease pada bearing buffer sampai penuh (Slide 23)", bearingGreased) { bearingGreased = it },
-                    ChecklistRowItem("Lakukan greasing coupling transfluid sesuai jadwal", couplingGreased) { couplingGreased = it },
-                    ChecklistRowItem("Cek level oli transfluid fluid-coupling, tambah jika kurang", oilLevelChecked) { oilLevelChecked = it }
-                )
+                    ChecklistRowItem("Greasing bearing sesuai jadwal dan takaran", greasingBearingChecked) { greasingBearingChecked = it },
+                    ChecklistRowItem("Level oli transfluid kopling dalam batas normal", oilLevelChecked) { oilLevelChecked = it }
+                ),
+                notesValue = lubricationNotes,
+                onNotesChange = { lubricationNotes = it },
+                notesPlaceholder = "Tuliskan temuan saat melakukan lubrication (contoh: level oli transfluid rendah, grease nipel macet, dll)..."
             )
         }
 
@@ -4984,14 +4961,16 @@ fun DailyCiltForm(onSave: (CiltCheck) -> Unit, history: List<CiltCheck>) {
                 icon = Icons.Default.Build,
                 accentColor = Color(0xFF059669),
                 items = listOf(
-                    ChecklistRowItem("Kencangkan baut pengunci nozzle holder dengan torsi tepat", nozzleBoltsTightened) { nozzleBoltsTightened = it },
-                    ChecklistRowItem("Pastikan fitting pipa & sambungan valve kencang tidak longgar", fittingPipesTightened) { fittingPipesTightened = it },
-                    ChecklistRowItem("Periksa ketegangan & kelayakan V-belt (Tension > 50 N)", beltTensionChecked) { beltTensionChecked = it }
-                )
+                    ChecklistRowItem("Baut pondasi mesin, cover, flange, nozzle holder, motor, coupling dikencangkan sesuai kebutuhan", foundationBoltsTightened) { foundationBoltsTightened = it },
+                    ChecklistRowItem("Tidak ada baut longgar dan lepas (tidak terpasang).", noLooseBoltsChecked) { noLooseBoltsChecked = it }
+                ),
+                notesValue = tighteningNotes,
+                onNotesChange = { tighteningNotes = it },
+                notesPlaceholder = "Tuliskan temuan saat melakukan tightening (contoh: baut cover longgar, baut flange aus/perlu diganti, dll)..."
             )
         }
 
-        // G. CATATAN / TEMUAN KHUSUS & TOMBOL SIMPAN
+        // G. TOMBOL SIMPAN
         item {
             Card(
                 colors = CardDefaults.cardColors(containerColor = Color.White),
@@ -5002,78 +4981,69 @@ fun DailyCiltForm(onSave: (CiltCheck) -> Unit, history: List<CiltCheck>) {
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(16.dp),
-                    verticalArrangement = Arrangement.spacedBy(14.dp)
+                        .padding(16.dp)
                 ) {
-                    Text(
-                        text = "Catatan / Temuan Khusus di Lapangan",
-                        fontSize = 14.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = Color.Black
-                    )
-
-                    OutlinedTextField(
-                        value = comments,
-                        onValueChange = { comments = it },
-                        textStyle = TextStyle(color = Color.Black, fontSize = 13.sp),
-                        colors = OutlinedTextFieldDefaults.colors(
-                            focusedTextColor = Color.Black,
-                            unfocusedTextColor = Color.Black,
-                            cursorColor = Color.Black
-                        ),
-                        placeholder = { Text("Tuliskan jika ada temuan abnormalitas, kebocoran, baut dol, vibrasi, dsb...", fontSize = 12.sp, color = Color.Gray) },
-                        leadingIcon = {
-                            Icon(Icons.Default.EditNote, contentDescription = null, tint = BrandGreen)
-                        },
-                        shape = RoundedCornerShape(14.dp),
-                        modifier = Modifier.fillMaxWidth()
-                    )
-
                     Button(
                         onClick = {
                             if (operatorName.isBlank()) {
                                 operatorName = "Operator Berau"
                             }
-                            val unitTag = if (selectedUnit.isNotBlank()) "[$selectedUnit]" else ""
-                            val shiftTag = if (shiftSelection.isNotBlank()) "[$shiftSelection]" else ""
-                            val formattedComments = "$unitTag $shiftTag $comments".trim()
+                            val formattedComments = if (shiftSelection.isNotBlank()) "[$shiftSelection]" else ""
 
                             onSave(
                                 CiltCheck(
                                     timestamp = System.currentTimeMillis(),
                                     operatorName = operatorName,
-                                    nozzleCleaned = nozzleCleaned,
-                                    bowlCleaned = bowlCleaned,
+                                    // 1. Cleaning
                                     areaCleaned = areaCleaned,
-                                    nozzleChecked = nozzleChecked,
-                                    vibrationChecked = vibrationChecked,
+                                    machineCleaned = machineCleaned,
+                                    drainageCleaned = drainageCleaned,
+                                    cleaningNotes = cleaningNotes.trim(),
+                                    // 2. Inspection
+                                    vibrationSoundChecked = vibrationSoundChecked,
+                                    temperatureChecked = temperatureChecked,
                                     leakChecked = leakChecked,
-                                    instrumentChecked = instrumentChecked,
-                                    bearingGreased = bearingGreased,
-                                    couplingGreased = couplingGreased,
+                                    componentsConditionChecked = componentsConditionChecked,
+                                    inspectionNotes = inspectionNotes.trim(),
+                                    // 3. Lubrication
+                                    greasingBearingChecked = greasingBearingChecked,
                                     oilLevelChecked = oilLevelChecked,
-                                    nozzleBoltsTightened = nozzleBoltsTightened,
-                                    fittingPipesTightened = fittingPipesTightened,
-                                    beltTensionChecked = beltTensionChecked,
+                                    lubricationNotes = lubricationNotes.trim(),
+                                    // 4. Tightening
+                                    foundationBoltsTightened = foundationBoltsTightened,
+                                    noLooseBoltsChecked = noLooseBoltsChecked,
+                                    tighteningNotes = tighteningNotes.trim(),
+                                    // Legacy mapping for backwards compatibility
+                                    nozzleCleaned = drainageCleaned,
+                                    bowlCleaned = machineCleaned,
+                                    nozzleChecked = componentsConditionChecked,
+                                    vibrationChecked = vibrationSoundChecked,
+                                    instrumentChecked = temperatureChecked,
+                                    bearingGreased = greasingBearingChecked,
+                                    couplingGreased = greasingBearingChecked,
+                                    nozzleBoltsTightened = foundationBoltsTightened,
+                                    fittingPipesTightened = noLooseBoltsChecked,
+                                    beltTensionChecked = componentsConditionChecked,
                                     comments = formattedComments
                                 )
                             )
                             // Reset form fields
                             operatorName = "Wahyu"
-                            comments = ""
-                            nozzleCleaned = false
-                            bowlCleaned = false
+                            cleaningNotes = ""
+                            inspectionNotes = ""
+                            lubricationNotes = ""
+                            tighteningNotes = ""
                             areaCleaned = false
-                            nozzleChecked = false
-                            vibrationChecked = false
+                            machineCleaned = false
+                            drainageCleaned = false
+                            vibrationSoundChecked = false
+                            temperatureChecked = false
                             leakChecked = false
-                            instrumentChecked = false
-                            bearingGreased = false
-                            couplingGreased = false
+                            componentsConditionChecked = false
+                            greasingBearingChecked = false
                             oilLevelChecked = false
-                            nozzleBoltsTightened = false
-                            fittingPipesTightened = false
-                            beltTensionChecked = false
+                            foundationBoltsTightened = false
+                            noLooseBoltsChecked = false
                         },
                         colors = ButtonDefaults.buttonColors(containerColor = BrandGreen),
                         shape = RoundedCornerShape(14.dp),
@@ -5085,7 +5055,7 @@ fun DailyCiltForm(onSave: (CiltCheck) -> Unit, history: List<CiltCheck>) {
                         Icon(Icons.Default.CheckCircle, contentDescription = null, modifier = Modifier.size(20.dp))
                         Spacer(modifier = Modifier.width(8.dp))
                         Text(
-                            text = "Simpan & Kirim Laporan CILT ($completedCount/13)",
+                            text = "Simpan & Kirim Laporan CILT ($completedCount/$totalItems)",
                             fontSize = 14.sp,
                             fontWeight = FontWeight.Bold,
                             color = Color.White
@@ -5095,7 +5065,7 @@ fun DailyCiltForm(onSave: (CiltCheck) -> Unit, history: List<CiltCheck>) {
             }
         }
 
-        // H. HISTORI PEMERIKSAAN CILT
+        // H. HISTORI PEMERIKSAAN CILT (MAKSIMAL 10 RIWAYAT)
         item {
             Row(
                 modifier = Modifier
@@ -5111,7 +5081,7 @@ fun DailyCiltForm(onSave: (CiltCheck) -> Unit, history: List<CiltCheck>) {
                     color = SlateGrey
                 )
                 Text(
-                    text = "${history.size} Riwayat",
+                    text = if (history.size > 10) "10 Terakhir (Maks 10)" else "${displayedHistory.size} Riwayat",
                     fontSize = 12.sp,
                     color = Color.Gray,
                     fontWeight = FontWeight.Medium
@@ -5119,7 +5089,7 @@ fun DailyCiltForm(onSave: (CiltCheck) -> Unit, history: List<CiltCheck>) {
             }
         }
 
-        if (history.isEmpty()) {
+        if (displayedHistory.isEmpty()) {
             item {
                 Surface(
                     modifier = Modifier.fillMaxWidth(),
@@ -5139,14 +5109,14 @@ fun DailyCiltForm(onSave: (CiltCheck) -> Unit, history: List<CiltCheck>) {
                 }
             }
         } else {
-            items(history) { check ->
+            items(displayedHistory, key = { it.id }) { check ->
                 val checkCompleted = listOf(
-                    check.nozzleCleaned, check.bowlCleaned, check.areaCleaned,
-                    check.nozzleChecked, check.vibrationChecked, check.leakChecked, check.instrumentChecked,
-                    check.bearingGreased, check.couplingGreased, check.oilLevelChecked,
-                    check.nozzleBoltsTightened, check.fittingPipesTightened, check.beltTensionChecked
+                    check.isAreaCleaned, check.isMachineCleaned, check.isDrainageCleaned,
+                    check.isVibrationSoundChecked, check.isTemperatureChecked, check.isLeakChecked, check.isComponentsConditionChecked,
+                    check.isGreasingBearingChecked, check.isOilLevelChecked,
+                    check.isFoundationBoltsTightened, check.isNoLooseBoltsChecked
                 ).count { it }
-                val isPerfect = checkCompleted == 13
+                val isPerfect = checkCompleted == 11
 
                 Card(
                     colors = CardDefaults.cardColors(containerColor = Color.White),
@@ -5195,7 +5165,7 @@ fun DailyCiltForm(onSave: (CiltCheck) -> Unit, history: List<CiltCheck>) {
                                 color = if (isPerfect) Color(0xFFDCFCE7) else Color(0xFFFEF3C7)
                             ) {
                                 Text(
-                                    text = if (isPerfect) "13/13 (100% OK)" else "$checkCompleted/13 Selesai",
+                                    text = if (isPerfect) "11/11 (100% OK)" else "$checkCompleted/11 Selesai",
                                     fontSize = 10.sp,
                                     fontWeight = FontWeight.Bold,
                                     color = if (isPerfect) Color(0xFF166534) else Color(0xFF92400E),
@@ -5226,6 +5196,79 @@ fun DailyCiltForm(onSave: (CiltCheck) -> Unit, history: List<CiltCheck>) {
                                     color = if (check.isSynced) BrandGreen else Color.Gray,
                                     fontWeight = FontWeight.Bold
                                 )
+                            }
+                        }
+
+                        // Catatan Temuan per Kategori CILT jika ada
+                        if (check.cleaningNotes.isNotBlank()) {
+                            Surface(
+                                shape = RoundedCornerShape(6.dp),
+                                color = Color(0xFFF0F9FF),
+                                border = BorderStroke(1.dp, Color(0xFFBAE6FD)),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                ) {
+                                    Text("Temuan Cleaning:", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = Color(0xFF0284C7))
+                                    Text(check.cleaningNotes, fontSize = 10.sp, color = Color(0xFF0C4A6E))
+                                }
+                            }
+                        }
+
+                        if (check.inspectionNotes.isNotBlank()) {
+                            Surface(
+                                shape = RoundedCornerShape(6.dp),
+                                color = Color(0xFFFFF7ED),
+                                border = BorderStroke(1.dp, Color(0xFFFED7AA)),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                ) {
+                                    Text("Temuan Inspection:", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = Color(0xFFEA580C))
+                                    Text(check.inspectionNotes, fontSize = 10.sp, color = Color(0xFF7C2D12))
+                                }
+                            }
+                        }
+
+                        if (check.lubricationNotes.isNotBlank()) {
+                            Surface(
+                                shape = RoundedCornerShape(6.dp),
+                                color = Color(0xFFFAF5FF),
+                                border = BorderStroke(1.dp, Color(0xFFE9D5FF)),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                ) {
+                                    Text("Temuan Lubrication:", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = Color(0xFF7C3AED))
+                                    Text(check.lubricationNotes, fontSize = 10.sp, color = Color(0xFF581C87))
+                                }
+                            }
+                        }
+
+                        if (check.tighteningNotes.isNotBlank()) {
+                            Surface(
+                                shape = RoundedCornerShape(6.dp),
+                                color = Color(0xFFECFDF5),
+                                border = BorderStroke(1.dp, Color(0xFFA7F3D0)),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                ) {
+                                    Text("Temuan Tightening:", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = Color(0xFF059669))
+                                    Text(check.tighteningNotes, fontSize = 10.sp, color = Color(0xFF064E3B))
+                                }
                             }
                         }
 
@@ -5440,7 +5483,10 @@ fun ChecklistCategoryCard(
     title: String,
     items: List<ChecklistRowItem>,
     icon: ImageVector? = null,
-    accentColor: Color = Color(0xFF059669)
+    accentColor: Color = Color(0xFF059669),
+    notesValue: String = "",
+    onNotesChange: ((String) -> Unit)? = null,
+    notesPlaceholder: String = "Tuliskan temuan abnormalitas jika ada..."
 ) {
     val checkedCount = items.count { it.checked }
     val totalCount = items.size
@@ -5559,6 +5605,49 @@ fun ChecklistCategoryCard(
                             )
                         }
                     }
+                }
+            }
+
+            // Kotak Catatan Temuan Khusus Kategori
+            if (onNotesChange != null) {
+                Spacer(modifier = Modifier.height(12.dp))
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.EditNote,
+                            contentDescription = null,
+                            tint = accentColor,
+                            modifier = Modifier.size(16.dp)
+                        )
+                        Text(
+                            text = "Catatan Temuan (Diisi jika ditemukan temuan):",
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = SlateGrey
+                        )
+                    }
+                    OutlinedTextField(
+                        value = notesValue,
+                        onValueChange = onNotesChange,
+                        textStyle = TextStyle(color = Color.Black, fontSize = 12.sp),
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedTextColor = Color.Black,
+                            unfocusedTextColor = Color.Black,
+                            focusedBorderColor = accentColor,
+                            unfocusedBorderColor = Color(0xFFCBD5E1),
+                            cursorColor = accentColor
+                        ),
+                        placeholder = {
+                            Text(notesPlaceholder, fontSize = 11.sp, color = Color.Gray)
+                        },
+                        shape = RoundedCornerShape(10.dp),
+                        modifier = Modifier.fillMaxWidth(),
+                        minLines = 2,
+                        maxLines = 4
+                    )
                 }
             }
         }

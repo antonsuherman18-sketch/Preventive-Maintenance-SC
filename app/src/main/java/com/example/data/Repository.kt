@@ -176,6 +176,21 @@ class Repository(
 
     // Pre-populate realistic data if empty
     suspend fun prePopulateIfEmpty() {
+        // Clean up any historical/mock logs that were erroneously stamped for today
+        try {
+            val now = System.currentTimeMillis()
+            val oneDayAgo = now - 24 * 60 * 60 * 1000L
+            val existing = vibrationDao.getAllLogsList()
+            existing.filter {
+                (it.comments.contains("pasca penerapan PM", ignoreCase = true) || it.comments.contains("Historis sebelum", ignoreCase = true)) &&
+                it.timestamp >= oneDayAgo
+            }.forEach {
+                vibrationDao.deleteLog(it)
+            }
+        } catch (e: Exception) {
+            Log.e("Repository", "Error cleaning up today's mock vibration logs", e)
+        }
+
         val currentVibList = vibrationHistory.first()
         if (currentVibList.isEmpty()) {
             Log.d("Repository", "Pre-populating rich mock data for Sludge Centrifuge PM...")
@@ -209,8 +224,8 @@ class Repository(
                 )
             }
 
-            // Post-Improvement Stable Trend (Jun-Jul 2026)
-            for (i in 15 downTo 0) {
+            // Post-Improvement Stable Trend (Jun-Jul 2026) - ends at yesterday (i=1), never today
+            for (i in 15 downTo 1) {
                 val timestamp = now - i * dayMs
                 val devVib = (2.5f + Math.random() * 1.5).toFloat() // 2.5 to 4.0 mm/s (normal < 4.5)
                 val ndevVib = (2.0f + Math.random() * 1.0).toFloat()

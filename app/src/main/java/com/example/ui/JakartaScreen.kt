@@ -29,9 +29,14 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.ui.window.Dialog
 import com.example.data.*
 import com.example.util.WibDateUtils
+import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.*
 
@@ -106,17 +111,39 @@ fun JakartaScreen(
 
                     OutlinedTextField(
                         value = passwordInput,
-                        onValueChange = {
-                            passwordInput = it
+                        onValueChange = { newInput ->
+                            passwordInput = newInput
                             passwordError = false
+                            val trimmed = newInput.trim()
+                            if (trimmed == "6321" || trimmed.equals("mill6321", ignoreCase = true) || trimmed.equals("admin6321", ignoreCase = true)) {
+                                isUnlocked = true
+                                passwordError = false
+                                passwordInput = ""
+                            }
                         },
                         label = { Text("Password / PIN", color = Color(0xFF333333)) },
-                        placeholder = { Text("Masukkan Password / PIN", color = Color(0xFF666666)) },
+                        placeholder = { Text("Masukkan Password (6321)", color = Color(0xFF666666)) },
                         singleLine = true,
                         isError = passwordError,
                         textStyle = androidx.compose.ui.text.TextStyle(
                             color = Color.Black,
                             fontSize = 14.sp
+                        ),
+                        keyboardOptions = KeyboardOptions(
+                            keyboardType = KeyboardType.NumberPassword,
+                            imeAction = ImeAction.Done
+                        ),
+                        keyboardActions = KeyboardActions(
+                            onDone = {
+                                val trimmed = passwordInput.trim()
+                                if (trimmed == "6321" || trimmed.equals("mill6321", ignoreCase = true) || trimmed.equals("admin6321", ignoreCase = true)) {
+                                    isUnlocked = true
+                                    passwordError = false
+                                    passwordInput = ""
+                                } else if (trimmed.isNotEmpty()) {
+                                    passwordError = true
+                                }
+                            }
                         ),
                         visualTransformation = if (passwordVisible) VisualTransformation.None else PasswordVisualTransformation(),
                         trailingIcon = {
@@ -229,14 +256,22 @@ fun JakartaScreen(
 
     // 1. MONITORING & TREND ANALYSIS CALCULATIONS
     // Filter vibration logs within the active cycle window: from 07:00 up to current check time
-    val cycleVibLogs = vibrationLogs.filter { it.timestamp in cycleStartTime..checkTimeMillis }
+    val cycleVibLogs = vibrationLogs.filter { log ->
+        val isMock = log.comments.contains("Historis", ignoreCase = true) ||
+                     log.comments.contains("pasca penerapan PM", ignoreCase = true)
+        !isMock && log.timestamp in cycleStartTime..checkTimeMillis
+    }
 
     // Check which SC units have input from 07:00 to current check time
     val unitsWithVibToday = units.associateWith { unitId ->
         cycleVibLogs.filter { log ->
+            val num = unitId.substringAfter("SC-") // "01"
+            val shortNum = num.trimStart('0') // "1"
             log.comments.contains(unitId, ignoreCase = true) ||
             log.comments.contains(unitId.replace("-", " "), ignoreCase = true) ||
-            (unitId == "SC-01" && !units.any { other -> other != "SC-01" && (log.comments.contains(other) || log.comments.contains(other.replace("-", " "))) })
+            log.comments.contains("SC$num", ignoreCase = true) ||
+            log.comments.contains("SC-$shortNum", ignoreCase = true) ||
+            log.comments.contains("SC $shortNum", ignoreCase = true)
         }
     }
 
@@ -275,7 +310,7 @@ fun JakartaScreen(
                 reasons.add("Suhu Bearing/Motor Warning (${String.format(Locale.US, "%.1f", maxTemp)}°C)")
             }
 
-            if (!log.isGreased) {
+            if (!log.isGreased && log.greasingStatus != "Belum Masuk Jadwal") {
                 reasons.add("Unit belum dilakukan greasing")
             }
 
@@ -297,6 +332,16 @@ fun JakartaScreen(
     val todayCiltChecks = ciltChecks.filter { it.timestamp in cycleStartTime..checkTimeMillis }
     val isCiltNotDoneToday = todayCiltChecks.isEmpty()
 
+    // Operator CILT tracking (Wahyu & Abdul Aziz)
+    val standardCiltOperators = listOf("Wahyu", "Abdul Aziz")
+    val operatorsDoneCiltToday = todayCiltChecks.map { it.operatorName.trim() }
+    val unperformedCiltOperators = standardCiltOperators.filter { op ->
+        operatorsDoneCiltToday.none { it.contains(op, ignoreCase = true) }
+    }
+    val performedCiltOperators = standardCiltOperators.filter { op ->
+        operatorsDoneCiltToday.any { it.contains(op, ignoreCase = true) }
+    }
+
     data class CiltDefect(
         val check: CiltCheck,
         val findings: List<String>
@@ -305,19 +350,29 @@ fun JakartaScreen(
     val ciltFindings = mutableListOf<CiltDefect>()
     todayCiltChecks.forEach { c ->
         val issues = mutableListOf<String>()
-        if (!c.nozzleCleaned) issues.add("Pembersihan nozzle & holder belum dilakukan")
-        if (!c.bowlCleaned) issues.add("Pembersihan cover bowl & kerak sludge belum dilakukan")
-        if (!c.areaCleaned) issues.add("Pembersihan area luar centrifuge belum dilakukan")
-        if (!c.nozzleChecked) issues.add("Inspeksi keausan & ukuran nozzle belum dicek")
-        if (!c.vibrationChecked) issues.add("Inspeksi getaran & suara abnormal belum dicek")
-        if (!c.leakChecked) issues.add("Inspeksi kebocoran seal & packing pipa belum dicek")
-        if (!c.instrumentChecked) issues.add("Inspeksi pressure & suhu instrumen belum dicek")
-        if (!c.bearingGreased) issues.add("Greasing bearing buffer belum dilakukan")
-        if (!c.couplingGreased) issues.add("Greasing coupling transfluid belum dilakukan")
-        if (!c.oilLevelChecked) issues.add("Level & kondisi oli gearbox belum dicek")
-        if (!c.nozzleBoltsTightened) issues.add("Pengencangan baut nozzle holder belum dilakukan")
-        if (!c.fittingPipesTightened) issues.add("Pengencangan baut fitting pipa belum dilakukan")
-        if (!c.beltTensionChecked) issues.add("Pemeriksaan tegangan belt transmisi belum dicek")
+        // 1. Cleaning
+        if (!c.isAreaCleaned) issues.add("Area sekitar mesin belum bersih dari tumpahan sludge & oli")
+        if (!c.isMachineCleaned) issues.add("Mesin & area sekitar belum bersih dari kerak")
+        if (!c.isDrainageCleaned) issues.add("Drainase tersumbat / belum diperiksa")
+        if (c.cleaningNotes.isNotBlank()) issues.add("Temuan Cleaning: ${c.cleaningNotes}")
+
+        // 2. Inspection
+        if (!c.isVibrationSoundChecked) issues.add("Vibrasi & suara abnormal terdeteksi")
+        if (!c.isTemperatureChecked) issues.add("Temperatur bearing & motor di luar batas normal")
+        if (!c.isLeakChecked) issues.add("Terdapat kebocoran pada pipa, valve, coupling, atau gland packing")
+        if (!c.isComponentsConditionChecked) issues.add("Nozzle, holder, belt, coupling, atau baut tidak dalam kondisi baik")
+        if (c.inspectionNotes.isNotBlank()) issues.add("Temuan Inspection: ${c.inspectionNotes}")
+
+        // 3. Lubrication
+        if (!c.isGreasingBearingChecked) issues.add("Greasing bearing belum sesuai jadwal & takaran")
+        if (!c.isOilLevelChecked) issues.add("Level oli transfluid kopling di luar batas normal")
+        if (c.lubricationNotes.isNotBlank()) issues.add("Temuan Lubrication: ${c.lubricationNotes}")
+
+        // 4. Tightening
+        if (!c.isFoundationBoltsTightened) issues.add("Baut pondasi mesin, cover, flange, motor, coupling belum dikencangkan")
+        if (!c.isNoLooseBoltsChecked) issues.add("Terdapat baut longgar atau lepas (tidak terpasang)")
+        if (c.tighteningNotes.isNotBlank()) issues.add("Temuan Tightening: ${c.tighteningNotes}")
+
         if (c.comments.isNotBlank()) issues.add("Catatan: ${c.comments}")
 
         if (issues.isNotEmpty()) {
@@ -339,11 +394,15 @@ fun JakartaScreen(
 
     // Synchronized total findings per category
     val totalMonitoringAlerts = vibAlerts.size + missingVibInputCount
-    val totalCiltAlerts = if (isCiltNotDoneToday) 1 else ciltFindings.size
+    val totalCiltAlerts = unperformedCiltOperators.size + ciltFindings.size
     val totalPmAlerts = recentAbnormalityFindings.size
     val totalFlushingAlerts = if (isFlushingNotDoneToday) 1 else incompleteFlushingLogs.size
 
+    val listState = androidx.compose.foundation.lazy.rememberLazyListState()
+    val coroutineScope = rememberCoroutineScope()
+
     LazyColumn(
+        state = listState,
         modifier = Modifier
             .fillMaxSize()
             .padding(horizontal = 14.dp, vertical = 10.dp)
@@ -481,7 +540,15 @@ fun JakartaScreen(
                         }
                         if (totalUnsynced > 0) {
                             TextButton(
-                                onClick = { viewModel.syncData() },
+                                onClick = {
+                                    viewModel.syncData { success ->
+                                        if (success) {
+                                            android.widget.Toast.makeText(context, "Sinkronisasi Cloud Berhasil!", android.widget.Toast.LENGTH_SHORT).show()
+                                        } else {
+                                            android.widget.Toast.makeText(context, "Gagal sinkron, pastikan mode online aktif!", android.widget.Toast.LENGTH_LONG).show()
+                                        }
+                                    }
+                                },
                                 contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp)
                             ) {
                                 Text("Sync Sekarang", color = BrandYellow, fontSize = 11.sp, fontWeight = FontWeight.Bold)
@@ -492,36 +559,688 @@ fun JakartaScreen(
             }
         }
 
-        // QUICK STATS SUMMARY TILES
+        // QUICK STATS SUMMARY TILES (DAPAT DIPILIH & SINKRON KE RINCIAN)
         item {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                ReportSummaryTile(
-                    title = "Monitoring",
-                    alertCount = totalMonitoringAlerts,
-                    color = if (totalMonitoringAlerts > 0) Color(0xFFE53935) else BrandGreen,
-                    modifier = Modifier.weight(1f)
-                )
-                ReportSummaryTile(
-                    title = "CILT",
-                    alertCount = totalCiltAlerts,
-                    color = if (totalCiltAlerts > 0) Color(0xFFFB8C00) else BrandGreen,
-                    modifier = Modifier.weight(1f)
-                )
-                ReportSummaryTile(
-                    title = "Reliability PM",
-                    alertCount = totalPmAlerts,
-                    color = if (totalPmAlerts > 0) Color(0xFF5E35B1) else BrandGreen,
-                    modifier = Modifier.weight(1f)
-                )
-                ReportSummaryTile(
-                    title = "Flushing",
-                    alertCount = totalFlushingAlerts,
-                    color = if (totalFlushingAlerts > 0) Color(0xFFD81B60) else BrandGreen,
-                    modifier = Modifier.weight(1f)
-                )
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    ReportSummaryTile(
+                        title = "Monitoring",
+                        alertCount = totalMonitoringAlerts,
+                        color = if (totalMonitoringAlerts > 0) Color(0xFFE53935) else BrandGreen,
+                        isSelected = selectedFilterTab == "1. Monitoring SC",
+                        onClick = {
+                            selectedFilterTab = if (selectedFilterTab == "1. Monitoring SC") "Semua" else "1. Monitoring SC"
+                            coroutineScope.launch {
+                                listState.animateScrollToItem(index = 2)
+                            }
+                        },
+                        modifier = Modifier.weight(1f)
+                    )
+                    ReportSummaryTile(
+                        title = "CILT",
+                        alertCount = totalCiltAlerts,
+                        color = if (totalCiltAlerts > 0) Color(0xFFFB8C00) else BrandGreen,
+                        isSelected = selectedFilterTab == "2. CILT",
+                        onClick = {
+                            selectedFilterTab = if (selectedFilterTab == "2. CILT") "Semua" else "2. CILT"
+                            coroutineScope.launch {
+                                listState.animateScrollToItem(index = 2)
+                            }
+                        },
+                        modifier = Modifier.weight(1f)
+                    )
+                    ReportSummaryTile(
+                        title = "Reliability PM",
+                        alertCount = totalPmAlerts,
+                        color = if (totalPmAlerts > 0) Color(0xFF5E35B1) else BrandGreen,
+                        isSelected = selectedFilterTab == "3. Reliability PM",
+                        onClick = {
+                            selectedFilterTab = if (selectedFilterTab == "3. Reliability PM") "Semua" else "3. Reliability PM"
+                            coroutineScope.launch {
+                                listState.animateScrollToItem(index = 2)
+                            }
+                        },
+                        modifier = Modifier.weight(1f)
+                    )
+                    ReportSummaryTile(
+                        title = "Flushing",
+                        alertCount = totalFlushingAlerts,
+                        color = if (totalFlushingAlerts > 0) Color(0xFFD81B60) else BrandGreen,
+                        isSelected = selectedFilterTab == "4. Flushing",
+                        onClick = {
+                            selectedFilterTab = if (selectedFilterTab == "4. Flushing") "Semua" else "4. Flushing"
+                            coroutineScope.launch {
+                                listState.animateScrollToItem(index = 2)
+                            }
+                        },
+                        modifier = Modifier.weight(1f)
+                    )
+                }
+
+                // Bar petunjuk & status pilihan
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = if (selectedFilterTab == "Semua") "💡 Sentuh kartu di atas untuk membuka rincian temuan" else "Menampilkan rincian: $selectedFilterTab",
+                        fontSize = 11.sp,
+                        fontWeight = if (selectedFilterTab == "Semua") FontWeight.Normal else FontWeight.Bold,
+                        color = if (selectedFilterTab == "Semua") Color.Gray else SlateGrey
+                    )
+                    if (selectedFilterTab != "Semua") {
+                        TextButton(
+                            onClick = { selectedFilterTab = "Semua" },
+                            contentPadding = PaddingValues(horizontal = 6.dp, vertical = 0.dp)
+                        ) {
+                            Text("Tampilkan Semua", fontSize = 11.sp, color = BrandGreen, fontWeight = FontWeight.Bold)
+                        }
+                    }
+                }
+            }
+        }
+
+        // PANEL RINCIAN TEMUAN LANGSUNG (MUNCUL TEPAT DI BAWAH KARTU PILIHAN)
+        if (selectedFilterTab != "Semua") {
+            item {
+                when (selectedFilterTab) {
+                    "1. Monitoring SC" -> {
+                        Card(
+                            colors = CardDefaults.cardColors(containerColor = Color(0xFFF0F7FF)),
+                            shape = RoundedCornerShape(14.dp),
+                            border = BorderStroke(1.5.dp, Color(0xFF1E88E5)),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Surface(
+                                            color = Color(0xFF1E88E5),
+                                            shape = CircleShape,
+                                            modifier = Modifier.size(28.dp)
+                                        ) {
+                                            Box(contentAlignment = Alignment.Center) {
+                                                Icon(Icons.Default.Analytics, contentDescription = null, tint = Color.White, modifier = Modifier.size(16.dp))
+                                            }
+                                        }
+                                        Spacer(modifier = Modifier.width(8.dp))
+                                        Column {
+                                            Text(
+                                                text = "Rincian $totalMonitoringAlerts Temuan Monitoring SC",
+                                                fontSize = 13.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                color = SlateGrey
+                                            )
+                                            Text(
+                                                text = "Pengecekan siklus hari ini ($checkRangeString)",
+                                                fontSize = 10.sp,
+                                                color = Color.Gray
+                                            )
+                                        }
+                                    }
+                                    Surface(
+                                        color = if (totalMonitoringAlerts > 0) Color(0xFFFFEBEE) else Color(0xFFE8F5E9),
+                                        shape = RoundedCornerShape(6.dp)
+                                    ) {
+                                        Text(
+                                            text = if (totalMonitoringAlerts > 0) "$totalMonitoringAlerts Perlu Tindakan" else "Aman",
+                                            fontSize = 10.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = if (totalMonitoringAlerts > 0) Color(0xFFD32F2F) else Color(0xFF2E7D32),
+                                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+                                        )
+                                    }
+                                }
+
+                                Divider(color = Color(0xFFBBDEFB), thickness = 0.8.dp)
+
+                                if (unitsMissingVibInput.isNotEmpty()) {
+                                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                        Text(
+                                            text = "1. Mesin Belum Input (${unitsMissingVibInput.size} Unit):",
+                                            fontSize = 11.5.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = Color(0xFFD84315)
+                                        )
+                                        Row(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .horizontalScroll(rememberScrollState()),
+                                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                        ) {
+                                            unitsMissingVibInput.forEach { u ->
+                                                Surface(
+                                                    color = Color(0xFFFFE0B2),
+                                                    shape = RoundedCornerShape(6.dp),
+                                                    border = BorderStroke(1.dp, Color(0xFFFFB74D))
+                                                ) {
+                                                    Text(
+                                                        text = "$u (Belum Input)",
+                                                        fontSize = 11.sp,
+                                                        fontWeight = FontWeight.Bold,
+                                                        color = Color(0xFFBF360C),
+                                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                                                    )
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+
+                                if (vibAlerts.isNotEmpty()) {
+                                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                        Text(
+                                            text = "2. Anomali & Parameter Alert (${vibAlerts.size} Temuan):",
+                                            fontSize = 11.5.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = Color(0xFFC62828)
+                                        )
+                                        vibAlerts.forEach { alert ->
+                                            Surface(
+                                                color = Color(0xFFFFEBEE),
+                                                shape = RoundedCornerShape(8.dp),
+                                                border = BorderStroke(1.dp, Color(0xFFFFCDD2)),
+                                                modifier = Modifier.fillMaxWidth()
+                                            ) {
+                                                Column(modifier = Modifier.padding(8.dp)) {
+                                                    Text(
+                                                        text = "Unit: ${alert.unitId}",
+                                                        fontSize = 11.sp,
+                                                        fontWeight = FontWeight.Bold,
+                                                        color = Color(0xFFB71C1C)
+                                                    )
+                                                    alert.reasons.forEach { r ->
+                                                        Text("• $r", fontSize = 10.5.sp, color = Color(0xFF424242))
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+
+                                if (unitsMissingVibInput.isEmpty() && vibAlerts.isEmpty()) {
+                                    Text(
+                                        text = "Seluruh unit Sludge Centrifuge (SC-01 s/d SC-08) telah diinput dan semua parameter dalam kondisi normal 100%.",
+                                        fontSize = 11.sp,
+                                        color = Color(0xFF2E7D32)
+                                    )
+                                }
+                            }
+                        }
+                    }
+                    "2. CILT" -> {
+                        Card(
+                            colors = CardDefaults.cardColors(containerColor = Color(0xFFFFF8E1)),
+                            shape = RoundedCornerShape(14.dp),
+                            border = BorderStroke(1.5.dp, Color(0xFFFB8C00)),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Surface(
+                                            color = Color(0xFFFB8C00),
+                                            shape = CircleShape,
+                                            modifier = Modifier.size(28.dp)
+                                        ) {
+                                            Box(contentAlignment = Alignment.Center) {
+                                                Icon(Icons.Default.FactCheck, contentDescription = null, tint = Color.White, modifier = Modifier.size(16.dp))
+                                            }
+                                        }
+                                        Spacer(modifier = Modifier.width(8.dp))
+                                        Column {
+                                            Text(
+                                                text = "Rincian $totalCiltAlerts Temuan CILT",
+                                                fontSize = 13.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                color = SlateGrey
+                                            )
+                                            Text(
+                                                text = "Inspeksi CILT hari ini ($checkRangeString)",
+                                                fontSize = 10.sp,
+                                                color = Color.Gray
+                                            )
+                                        }
+                                    }
+                                    Surface(
+                                        color = if (totalCiltAlerts > 0) Color(0xFFFFEBEE) else Color(0xFFE8F5E9),
+                                        shape = RoundedCornerShape(6.dp)
+                                    ) {
+                                        Text(
+                                            text = if (totalCiltAlerts > 0) "$totalCiltAlerts Perlu Tindakan" else "Lengkap",
+                                            fontSize = 10.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = if (totalCiltAlerts > 0) Color(0xFFD32F2F) else Color(0xFF2E7D32),
+                                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+                                        )
+                                    }
+                                }
+
+                                Divider(color = Color(0xFFFFE082), thickness = 0.8.dp)
+
+                                if (unperformedCiltOperators.isNotEmpty()) {
+                                    Surface(
+                                        color = Color(0xFFFFEBEE),
+                                        shape = RoundedCornerShape(10.dp),
+                                        border = BorderStroke(1.dp, Color(0xFFFFCDD2)),
+                                        modifier = Modifier.fillMaxWidth()
+                                    ) {
+                                        Column(
+                                            modifier = Modifier.padding(12.dp),
+                                            verticalArrangement = Arrangement.spacedBy(8.dp)
+                                        ) {
+                                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                                Icon(
+                                                    imageVector = Icons.Default.WarningAmber,
+                                                    contentDescription = null,
+                                                    tint = Color(0xFFD32F2F),
+                                                    modifier = Modifier.size(18.dp)
+                                                )
+                                                Spacer(modifier = Modifier.width(6.dp))
+                                                Text(
+                                                    text = "Operator Belum Melakukan CILT Hari Ini:",
+                                                    fontSize = 12.sp,
+                                                    fontWeight = FontWeight.Bold,
+                                                    color = Color(0xFFB71C1C)
+                                                )
+                                            }
+
+                                            Text(
+                                                text = "Waktu/jam pengecekan saat ini: $checkRangeString",
+                                                fontSize = 10.5.sp,
+                                                color = Color(0xFFC62828),
+                                                fontWeight = FontWeight.Medium
+                                            )
+
+                                            unperformedCiltOperators.forEach { opName ->
+                                                Surface(
+                                                    color = Color.White,
+                                                    shape = RoundedCornerShape(8.dp),
+                                                    border = BorderStroke(1.dp, Color(0xFFFFCDD2)),
+                                                    modifier = Modifier.fillMaxWidth()
+                                                ) {
+                                                    Row(
+                                                        modifier = Modifier
+                                                            .fillMaxWidth()
+                                                            .padding(horizontal = 10.dp, vertical = 8.dp),
+                                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                                        verticalAlignment = Alignment.CenterVertically
+                                                    ) {
+                                                        Row(verticalAlignment = Alignment.CenterVertically) {
+                                                            Box(
+                                                                modifier = Modifier
+                                                                    .size(24.dp)
+                                                                    .clip(CircleShape)
+                                                                    .background(Color(0xFFFFEBEE)),
+                                                                contentAlignment = Alignment.Center
+                                                            ) {
+                                                                Icon(
+                                                                    imageVector = Icons.Default.PersonOff,
+                                                                    contentDescription = null,
+                                                                    tint = Color(0xFFD32F2F),
+                                                                    modifier = Modifier.size(14.dp)
+                                                                )
+                                                            }
+                                                            Spacer(modifier = Modifier.width(8.dp))
+                                                            Column {
+                                                                Text(
+                                                                    text = opName,
+                                                                    fontSize = 12.sp,
+                                                                    fontWeight = FontWeight.Bold,
+                                                                    color = Color(0xFFB71C1C)
+                                                                )
+                                                                Text(
+                                                                    text = "Belum ada catatan input CILT hari ini",
+                                                                    fontSize = 10.sp,
+                                                                    color = Color.Gray
+                                                                )
+                                                            }
+                                                        }
+                                                        Surface(
+                                                            color = Color(0xFFFFCDD2),
+                                                            shape = RoundedCornerShape(6.dp)
+                                                        ) {
+                                                            Text(
+                                                                text = "BELUM INPUT",
+                                                                fontSize = 9.5.sp,
+                                                                fontWeight = FontWeight.Bold,
+                                                                color = Color(0xFFB71C1C),
+                                                                modifier = Modifier.padding(horizontal = 7.dp, vertical = 3.dp)
+                                                            )
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+
+                                if (performedCiltOperators.isNotEmpty()) {
+                                    Surface(
+                                        color = Color(0xFFF0FDF4),
+                                        shape = RoundedCornerShape(10.dp),
+                                        border = BorderStroke(1.dp, Color(0xFFBBF7D0)),
+                                        modifier = Modifier.fillMaxWidth()
+                                    ) {
+                                        Column(
+                                            modifier = Modifier.padding(12.dp),
+                                            verticalArrangement = Arrangement.spacedBy(6.dp)
+                                        ) {
+                                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                                Icon(
+                                                    imageVector = Icons.Default.CheckCircle,
+                                                    contentDescription = null,
+                                                    tint = Color(0xFF16A34A),
+                                                    modifier = Modifier.size(18.dp)
+                                                )
+                                                Spacer(modifier = Modifier.width(6.dp))
+                                                Text(
+                                                    text = "Operator Sudah Melakukan CILT Hari Ini:",
+                                                    fontSize = 12.sp,
+                                                    fontWeight = FontWeight.Bold,
+                                                    color = Color(0xFF166534)
+                                                )
+                                            }
+
+                                            performedCiltOperators.forEach { opName ->
+                                                val checks = todayCiltChecks.filter { it.operatorName.contains(opName, ignoreCase = true) }
+                                                val lastCheck = checks.maxByOrNull { it.timestamp }
+                                                val timeStr = if (lastCheck != null) WibDateUtils.format("HH:mm", lastCheck.timestamp) + " WIB" else ""
+
+                                                Row(
+                                                    modifier = Modifier
+                                                        .fillMaxWidth()
+                                                        .padding(horizontal = 4.dp, vertical = 3.dp),
+                                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                                    verticalAlignment = Alignment.CenterVertically
+                                                ) {
+                                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                                        Box(
+                                                            modifier = Modifier
+                                                                .size(8.dp)
+                                                                .clip(CircleShape)
+                                                                .background(Color(0xFF16A34A))
+                                                        )
+                                                        Spacer(modifier = Modifier.width(8.dp))
+                                                        Text(
+                                                            text = opName,
+                                                            fontSize = 11.5.sp,
+                                                            fontWeight = FontWeight.SemiBold,
+                                                            color = Color(0xFF14532D)
+                                                        )
+                                                    }
+                                                    Text(
+                                                        text = "Tercatat pukul $timeStr (${checks.size}x)",
+                                                        fontSize = 10.5.sp,
+                                                        color = Color(0xFF15803D),
+                                                        fontWeight = FontWeight.Medium
+                                                    )
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+
+                                if (ciltFindings.isNotEmpty()) {
+                                    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                                        Text(
+                                            text = "Temuan Ketidaksesuaian Standar CILT:",
+                                            fontSize = 11.5.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = Color(0xFFD84315)
+                                        )
+                                        ciltFindings.forEach { defect ->
+                                            Surface(
+                                                color = Color(0xFFFBE9E7),
+                                                shape = RoundedCornerShape(8.dp),
+                                                border = BorderStroke(1.dp, Color(0xFFFFCCBC)),
+                                                modifier = Modifier.fillMaxWidth()
+                                            ) {
+                                                Column(modifier = Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                                    Row(
+                                                        modifier = Modifier.fillMaxWidth(),
+                                                        horizontalArrangement = Arrangement.SpaceBetween
+                                                    ) {
+                                                        Text("Inspektor: ${defect.check.operatorName}", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color(0xFFBF360C))
+                                                        Text(WibDateUtils.format("HH:mm", defect.check.timestamp) + " WIB", fontSize = 10.sp, color = Color.Gray)
+                                                    }
+                                                    defect.findings.forEach { issue ->
+                                                        Text("• $issue", fontSize = 10.5.sp, color = Color(0xFF3E2723))
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+
+                                if (unperformedCiltOperators.isEmpty() && ciltFindings.isEmpty()) {
+                                    Text(
+                                        text = "Seluruh operator (${standardCiltOperators.joinToString(", ")}) telah melaksanakan CILT hari ini ($checkRangeString) dan seluruh standar terpenuhi 100%.",
+                                        fontSize = 11.sp,
+                                        color = Color(0xFF2E7D32)
+                                    )
+                                }
+                            }
+                        }
+                    }
+                    "3. Reliability PM" -> {
+                        Card(
+                            colors = CardDefaults.cardColors(containerColor = Color(0xFFF3E5F5)),
+                            shape = RoundedCornerShape(14.dp),
+                            border = BorderStroke(1.5.dp, Color(0xFF5E35B1)),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Surface(
+                                            color = Color(0xFF5E35B1),
+                                            shape = CircleShape,
+                                            modifier = Modifier.size(28.dp)
+                                        ) {
+                                            Box(contentAlignment = Alignment.Center) {
+                                                Icon(Icons.Default.Build, contentDescription = null, tint = Color.White, modifier = Modifier.size(16.dp))
+                                            }
+                                        }
+                                        Spacer(modifier = Modifier.width(8.dp))
+                                        Column {
+                                            Text(
+                                                text = "Rincian $totalPmAlerts Temuan Reliability PM",
+                                                fontSize = 13.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                color = SlateGrey
+                                            )
+                                            Text(
+                                                text = "Daftar temuan abnormality aktif & FMEA",
+                                                fontSize = 10.sp,
+                                                color = Color.Gray
+                                            )
+                                        }
+                                    }
+                                    Surface(
+                                        color = if (totalPmAlerts > 0) Color(0xFFFFEBEE) else Color(0xFFE8F5E9),
+                                        shape = RoundedCornerShape(6.dp)
+                                    ) {
+                                        Text(
+                                            text = if (totalPmAlerts > 0) "$totalPmAlerts Temuan" else "Nihil",
+                                            fontSize = 10.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = if (totalPmAlerts > 0) Color(0xFFD32F2F) else Color(0xFF2E7D32),
+                                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+                                        )
+                                    }
+                                }
+
+                                Divider(color = Color(0xFFCE93D8), thickness = 0.8.dp)
+
+                                if (recentAbnormalityFindings.isNotEmpty()) {
+                                    recentAbnormalityFindings.take(5).forEach { rep ->
+                                        Surface(
+                                            color = Color(0xFFFAFAFA),
+                                            shape = RoundedCornerShape(8.dp),
+                                            border = BorderStroke(1.dp, Color(0xFFE0E0E0)),
+                                            modifier = Modifier.fillMaxWidth()
+                                        ) {
+                                            Column(modifier = Modifier.padding(8.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                                                Row(
+                                                    modifier = Modifier.fillMaxWidth(),
+                                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                                    verticalAlignment = Alignment.CenterVertically
+                                                ) {
+                                                    Text(rep.title, fontSize = 11.5.sp, fontWeight = FontWeight.Bold, color = SlateGrey)
+                                                    Text("RPN: ${rep.rpn}", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = if (rep.rpn >= 100) Color(0xFFC62828) else Color(0xFF2E7D32))
+                                                }
+                                                Text(rep.description, fontSize = 10.5.sp, color = Color.DarkGray)
+                                                Text("PIC: ${rep.picName} • Tag: ${rep.tagType}", fontSize = 9.5.sp, color = Color.Gray)
+                                            }
+                                        }
+                                    }
+                                    if (recentAbnormalityFindings.size > 5) {
+                                        Text(
+                                            text = "Lihat ${recentAbnormalityFindings.size - 5} temuan lainnya pada tabel lengkap di bawah.",
+                                            fontSize = 10.5.sp,
+                                            color = Color.Gray,
+                                            fontStyle = androidx.compose.ui.text.font.FontStyle.Italic
+                                        )
+                                    }
+                                } else {
+                                    Text(
+                                        text = "Belum ada temuan abnormality yang tercatat di menu Reliability PM.",
+                                        fontSize = 11.sp,
+                                        color = Color(0xFF2E7D32)
+                                    )
+                                }
+                            }
+                        }
+                    }
+                    "4. Flushing" -> {
+                        Card(
+                            colors = CardDefaults.cardColors(containerColor = Color(0xFFE0F2F1)),
+                            shape = RoundedCornerShape(14.dp),
+                            border = BorderStroke(1.5.dp, Color(0xFF00897B)),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Surface(
+                                            color = Color(0xFF00897B),
+                                            shape = CircleShape,
+                                            modifier = Modifier.size(28.dp)
+                                        ) {
+                                            Box(contentAlignment = Alignment.Center) {
+                                                Icon(Icons.Default.WaterDrop, contentDescription = null, tint = Color.White, modifier = Modifier.size(16.dp))
+                                            }
+                                        }
+                                        Spacer(modifier = Modifier.width(8.dp))
+                                        Column {
+                                            Text(
+                                                text = "Rincian $totalFlushingAlerts Temuan Flushing",
+                                                fontSize = 13.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                color = SlateGrey
+                                            )
+                                            Text(
+                                                text = "Siklus flushing centrifuge ($checkRangeString)",
+                                                fontSize = 10.sp,
+                                                color = Color.Gray
+                                            )
+                                        }
+                                    }
+                                    Surface(
+                                        color = if (totalFlushingAlerts > 0) Color(0xFFFFEBEE) else Color(0xFFE8F5E9),
+                                        shape = RoundedCornerShape(6.dp)
+                                    ) {
+                                        Text(
+                                            text = if (totalFlushingAlerts > 0) "$totalFlushingAlerts Perlu Tindakan" else "Tuntas",
+                                            fontSize = 10.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = if (totalFlushingAlerts > 0) Color(0xFFD32F2F) else Color(0xFF2E7D32),
+                                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+                                        )
+                                    }
+                                }
+
+                                Divider(color = Color(0xFF80CBC4), thickness = 0.8.dp)
+
+                                if (isFlushingNotDoneToday) {
+                                    Surface(
+                                        color = Color(0xFFFFE0B2),
+                                        shape = RoundedCornerShape(8.dp),
+                                        border = BorderStroke(1.dp, Color(0xFFFFB74D)),
+                                        modifier = Modifier.fillMaxWidth()
+                                    ) {
+                                        Row(modifier = Modifier.padding(10.dp), verticalAlignment = Alignment.CenterVertically) {
+                                            Icon(Icons.Default.WarningAmber, contentDescription = null, tint = Color(0xFFE65100), modifier = Modifier.size(20.dp))
+                                            Spacer(modifier = Modifier.width(8.dp))
+                                            Text(
+                                                text = "Peringatan Flushing: Belum ada jadwal flushing yang dieksekusi hari ini ($checkRangeString).",
+                                                fontSize = 11.sp,
+                                                fontWeight = FontWeight.SemiBold,
+                                                color = Color(0xFFBF360C)
+                                            )
+                                        }
+                                    }
+                                }
+
+                                if (incompleteFlushingLogs.isNotEmpty()) {
+                                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                        Text(
+                                            text = "Siklus Flushing Belum Tuntas:",
+                                            fontSize = 11.5.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = Color(0xFFD84315)
+                                        )
+                                        incompleteFlushingLogs.forEach { log ->
+                                            Surface(
+                                                color = Color(0xFFFFEBEE),
+                                                shape = RoundedCornerShape(6.dp),
+                                                modifier = Modifier.fillMaxWidth()
+                                            ) {
+                                                Row(
+                                                    modifier = Modifier.padding(8.dp),
+                                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                                    verticalAlignment = Alignment.CenterVertically
+                                                ) {
+                                                    Text("${log.unitName}: ${log.completedCount}/${log.totalCount} Siklus", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color(0xFFB71C1C))
+                                                    Text(WibDateUtils.format("HH:mm", log.timestamp) + " WIB", fontSize = 10.sp, color = Color.Gray)
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+
+                                if (!isFlushingNotDoneToday && incompleteFlushingLogs.isEmpty()) {
+                                    Text(
+                                        text = "Seluruh siklus kegiatan flushing hari ini telah tuntas 100% terlaksana.",
+                                        fontSize = 11.sp,
+                                        color = Color(0xFF2E7D32)
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
             }
         }
 
@@ -644,794 +1363,8 @@ fun JakartaScreen(
             }
         }
 
-        // ---------------------------------------------------------------------------------------------
-        // SECTION 1: MONITORING DAN TREND ANALYSIS SC
-        // ---------------------------------------------------------------------------------------------
-        if (selectedFilterTab == "Semua" || selectedFilterTab == "1. Monitoring SC") {
-            item {
-                SectionHeader(
-                    icon = Icons.Default.Analytics,
-                    title = "1. Laporan Monitoring & Trend Analysis",
-                    subtitle = "Status input $checkRangeString, vibrasi, temperatur, greasing, kebocoran & suara abnormal",
-                    accentColor = Color(0xFF1E88E5),
-                    alertCount = totalMonitoringAlerts,
-                    onExportExcel = {
-                        exportReportType = "monitoring"
-                        showExcelExportDialog = true
-                    }
-                )
-            }
-
-            // Sub-item 1A: Status Belum Melakukan Input dari Jam 07:00 s/d Jam Saat Pengecekan
-            val card1ANeedsAttention = unitsMissingVibInput.isNotEmpty()
-            item {
-                Card(
-                    colors = CardDefaults.cardColors(
-                        containerColor = if (card1ANeedsAttention) Color(0xFFFFF8E1) else Color.White
-                    ),
-                    shape = RoundedCornerShape(14.dp),
-                    border = BorderStroke(
-                        1.dp,
-                        if (card1ANeedsAttention) Color(0xFFFFB74D) else Color(0xFFE2E8F0)
-                    ),
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            verticalAlignment = Alignment.Top
-                        ) {
-                            Icon(
-                                imageVector = if (unitsMissingVibInput.isNotEmpty()) Icons.Default.Warning else Icons.Default.CheckCircle,
-                                contentDescription = null,
-                                tint = if (unitsMissingVibInput.isNotEmpty()) Color(0xFFF57C00) else Color(0xFF388E3C),
-                                modifier = Modifier
-                                    .padding(top = 2.dp)
-                                    .size(18.dp)
-                            )
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                                Text(
-                                    "Status Input Mesin Hari Ini ($checkRangeString)",
-                                    fontSize = 13.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = SlateGrey
-                                )
-                                Surface(
-                                    color = if (unitsMissingVibInput.isEmpty()) Color(0xFFE8F5E9) else Color(0xFFFFF3E0),
-                                    shape = RoundedCornerShape(6.dp)
-                                ) {
-                                    Text(
-                                        text = if (unitsMissingVibInput.isEmpty()) "Lengkap (8/8 Diinput)" else "${unitsMissingVibInput.size} Belum Input",
-                                        fontSize = 10.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        color = if (unitsMissingVibInput.isEmpty()) Color(0xFF2E7D32) else Color(0xFFE65100),
-                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
-                                    )
-                                }
-                            }
-                        }
-
-                        if (unitsMissingVibInput.isNotEmpty()) {
-                            Text(
-                                text = "Unit mesin yang belum melakukan input dari jam 07:00 sampai jam $currentHourMinute:",
-                                fontSize = 11.sp,
-                                color = Color(0xFFD84315),
-                                fontWeight = FontWeight.SemiBold
-                            )
-
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .horizontalScroll(rememberScrollState()),
-                                horizontalArrangement = Arrangement.spacedBy(6.dp)
-                            ) {
-                                unitsMissingVibInput.forEach { unitId ->
-                                    Surface(
-                                        color = Color(0xFFFFE0B2),
-                                        shape = RoundedCornerShape(8.dp),
-                                        border = BorderStroke(1.dp, Color(0xFFFFB74D))
-                                    ) {
-                                        Row(
-                                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
-                                            verticalAlignment = Alignment.CenterVertically
-                                        ) {
-                                            Icon(
-                                                imageVector = Icons.Default.ErrorOutline,
-                                                contentDescription = null,
-                                                tint = Color(0xFFE65100),
-                                                modifier = Modifier.size(13.dp)
-                                            )
-                                            Spacer(modifier = Modifier.width(4.dp))
-                                            Text(
-                                                text = "$unitId (Belum Input)",
-                                                fontSize = 11.sp,
-                                                fontWeight = FontWeight.Bold,
-                                                color = Color(0xFFBF360C)
-                                            )
-                                        }
-                                    }
-                                }
-                            }
-
-                            Text(
-                                text = "Data dihitung dari jam 07:00 sampai saat pengecekan ($currentHourMinute) dan akan diperbarui kembali $nextRenewalText.",
-                                fontSize = 10.sp,
-                                color = Color.Gray,
-                                fontStyle = androidx.compose.ui.text.font.FontStyle.Italic
-                            )
-                        } else {
-                            Text(
-                                text = "Semua unit mesin Sludge Centrifuge (SC-01 s/d SC-08) telah melakukan input dari jam 07:00 sampai jam $currentHourMinute. Data akan diperbarui kembali $nextRenewalText.",
-                                fontSize = 11.sp,
-                                color = Color(0xFF2E7D32)
-                            )
-                        }
-                    }
-                }
-            }
-
-            // Sub-item 1B: Anomali Parameter (Vibrasi/Suhu Kritikal, Greasing, Bocor, Suara Abnormal)
-            val card1BNeedsAttention = vibAlerts.isNotEmpty()
-            item {
-                Card(
-                    colors = CardDefaults.cardColors(
-                        containerColor = if (card1BNeedsAttention) Color(0xFFFFF8E1) else Color.White
-                    ),
-                    shape = RoundedCornerShape(14.dp),
-                    border = BorderStroke(
-                        1.dp,
-                        if (card1BNeedsAttention) Color(0xFFFFB74D) else Color(0xFFE2E8F0)
-                    ),
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Text(
-                                "Temuan Parameter Abnormal & Kepatuhan Greasing",
-                                fontSize = 13.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = SlateGrey
-                            )
-                            Text(
-                                text = "${vibAlerts.size} Temuan",
-                                fontSize = 11.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = if (vibAlerts.isNotEmpty()) Color(0xFFD32F2F) else Color(0xFF388E3C)
-                            )
-                        }
-
-                        if (vibAlerts.isNotEmpty()) {
-                            vibAlerts.forEach { alert ->
-                                Surface(
-                                    color = Color(0xFFFFF8E1),
-                                    shape = RoundedCornerShape(10.dp),
-                                    border = BorderStroke(1.dp, Color(0xFFFFD54F)),
-                                    modifier = Modifier.fillMaxWidth()
-                                ) {
-                                    Column(modifier = Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                                        Row(
-                                            modifier = Modifier.fillMaxWidth(),
-                                            horizontalArrangement = Arrangement.SpaceBetween,
-                                            verticalAlignment = Alignment.CenterVertically
-                                        ) {
-                                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                                Surface(
-                                                    color = SlateGrey,
-                                                    shape = RoundedCornerShape(6.dp)
-                                                ) {
-                                                    Text(
-                                                        text = alert.unitId,
-                                                        color = Color.White,
-                                                        fontSize = 11.sp,
-                                                        fontWeight = FontWeight.Bold,
-                                                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
-                                                    )
-                                                }
-                                                Spacer(modifier = Modifier.width(6.dp))
-                                                Text(
-                                                    text = "Shift: ${alert.log.shift} (${alert.log.operatorName})",
-                                                    fontSize = 11.sp,
-                                                    color = Color.Black,
-                                                    fontWeight = FontWeight.SemiBold
-                                                )
-                                            }
-                                            Text(
-                                                text = WibDateUtils.format("HH:mm", alert.log.timestamp) + " WIB",
-                                                fontSize = 10.sp,
-                                                color = Color.Gray
-                                            )
-                                        }
-
-                                        alert.reasons.forEach { r ->
-                                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                                Box(
-                                                    modifier = Modifier
-                                                        .size(6.dp)
-                                                        .background(Color(0xFFD32F2F), CircleShape)
-                                                )
-                                                Spacer(modifier = Modifier.width(6.dp))
-                                                Text(
-                                                    text = r,
-                                                    fontSize = 11.sp,
-                                                    fontWeight = FontWeight.Medium,
-                                                    color = Color(0xFFB71C1C)
-                                                )
-                                            }
-                                        }
-
-                                        if (alert.log.comments.isNotBlank()) {
-                                            Text(
-                                                text = "Catatan: ${alert.log.comments}",
-                                                fontSize = 10.sp,
-                                                color = Color.DarkGray
-                                            )
-                                        }
-                                    }
-                                }
-                            }
-                        } else {
-                            Text(
-                                text = "Tidak ada unit dengan temperatur/vibrasi kritikal, kebocoran, atau suara abnormal. Semua unit di-greasing dengan baik.",
-                                fontSize = 11.sp,
-                                color = Color(0xFF2E7D32)
-                            )
-                        }
-                    }
-                }
-            }
-        }
-
-        // ---------------------------------------------------------------------------------------------
-        // SECTION 2: LAPORAN CILT
-        // ---------------------------------------------------------------------------------------------
-        if (selectedFilterTab == "Semua" || selectedFilterTab == "2. CILT") {
-            item {
-                SectionHeader(
-                    icon = Icons.Default.FactCheck,
-                    title = "2. Laporan CILT (Cleaning, Inspection, Lubricating, Tightening)",
-                    subtitle = "Status eksekusi $checkRangeString & pelaporan temuan ketidaksesuaian di lapangan",
-                    accentColor = Color(0xFFFB8C00),
-                    alertCount = totalCiltAlerts,
-                    onExportExcel = {
-                        exportReportType = "cilt"
-                        showExcelExportDialog = true
-                    }
-                )
-                Spacer(modifier = Modifier.height(4.dp))
-
-                val card2NeedsAttention = isCiltNotDoneToday || ciltFindings.isNotEmpty()
-                Card(
-                    colors = CardDefaults.cardColors(
-                        containerColor = if (card2NeedsAttention) Color(0xFFFFF8E1) else Color.White
-                    ),
-                    shape = RoundedCornerShape(14.dp),
-                    border = BorderStroke(
-                        1.dp,
-                        if (card2NeedsAttention) Color(0xFFFFB74D) else Color(0xFFE2E8F0)
-                    ),
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Column(
-                        modifier = Modifier.padding(start = 12.dp, end = 12.dp, top = 8.dp, bottom = 10.dp),
-                        verticalArrangement = Arrangement.spacedBy(6.dp)
-                    ) {
-                        Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Text(
-                                    "Status Pelaksanaan CILT Hari Ini ($checkRangeString)",
-                                    fontSize = 12.5.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = SlateGrey
-                                )
-                                Surface(
-                                    color = if (isCiltNotDoneToday) Color(0xFFFFEBEE) else Color(0xFFE8F5E9),
-                                    shape = RoundedCornerShape(4.dp)
-                                ) {
-                                    Text(
-                                        text = if (isCiltNotDoneToday) "1 Temuan (Belum Dilakukan)" else "${todayCiltChecks.size} Checklist Selesai",
-                                        fontSize = 9.5.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        color = if (isCiltNotDoneToday) Color(0xFFC62828) else Color(0xFF2E7D32),
-                                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
-                                    )
-                                }
-                            }
-
-                            if (isCiltNotDoneToday) {
-                                Surface(
-                                    color = Color(0xFFFFF8E1),
-                                    shape = RoundedCornerShape(6.dp),
-                                    border = BorderStroke(1.dp, Color(0xFFFFE082)),
-                                    modifier = Modifier.fillMaxWidth()
-                                ) {
-                                    Row(
-                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 5.dp),
-                                        verticalAlignment = Alignment.CenterVertically
-                                    ) {
-                                        Icon(
-                                            imageVector = Icons.Default.WarningAmber,
-                                            contentDescription = null,
-                                            tint = Color(0xFFF57C00),
-                                            modifier = Modifier.size(16.dp)
-                                        )
-                                        Spacer(modifier = Modifier.width(6.dp))
-                                        Text(
-                                            text = "Peringatan: Belum ada checklist CILT yang tercatat dari jam 07:00 sampai jam $currentHourMinute. Data akan diperbarui lagi $nextRenewalText.",
-                                            fontSize = 10.5.sp,
-                                            lineHeight = 14.sp,
-                                            color = Color(0xFFBF360C),
-                                            fontWeight = FontWeight.SemiBold
-                                        )
-                                    }
-                                }
-                            } else {
-                                Text(
-                                    text = "Kegiatan CILT telah tercatat hari ini sebanyak ${todayCiltChecks.size} kali inspeksi (07:00 s/d $currentHourMinute). Data akan diperbarui lagi $nextRenewalText.",
-                                    fontSize = 10.5.sp,
-                                    lineHeight = 14.sp,
-                                    color = Color(0xFF2E7D32)
-                                )
-                            }
-                        }
-
-                        // CILT Findings / Defects
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Text(
-                                "Temuan Ketidaksesuaian CILT di Lapangan:",
-                                fontSize = 12.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = SlateGrey
-                            )
-                            Surface(
-                                color = if (ciltFindings.isNotEmpty()) Color(0xFFFFEBEE) else Color(0xFFE8F5E9),
-                                shape = RoundedCornerShape(6.dp)
-                            ) {
-                                Text(
-                                    text = if (ciltFindings.isNotEmpty()) "${ciltFindings.size} Temuan" else "0 Temuan",
-                                    fontSize = 10.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = if (ciltFindings.isNotEmpty()) Color(0xFFD32F2F) else Color(0xFF2E7D32),
-                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
-                                )
-                            }
-                        }
-
-                        if (ciltFindings.isNotEmpty()) {
-                            ciltFindings.forEach { defect ->
-                                Surface(
-                                    color = Color(0xFFFBE9E7),
-                                    shape = RoundedCornerShape(8.dp),
-                                    border = BorderStroke(1.dp, Color(0xFFFFCCBC)),
-                                    modifier = Modifier.fillMaxWidth()
-                                ) {
-                                    Column(modifier = Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                                        Row(
-                                            modifier = Modifier.fillMaxWidth(),
-                                            horizontalArrangement = Arrangement.SpaceBetween,
-                                            verticalAlignment = Alignment.CenterVertically
-                                        ) {
-                                            Text(
-                                                text = "Inspektor: ${defect.check.operatorName}",
-                                                fontSize = 11.sp,
-                                                fontWeight = FontWeight.Bold,
-                                                color = Color(0xFFBF360C)
-                                            )
-                                            Text(
-                                                text = WibDateUtils.format("dd MMM, HH:mm", defect.check.timestamp) + " WIB",
-                                                fontSize = 10.sp,
-                                                color = Color.Gray
-                                            )
-                                        }
-                                        defect.findings.forEach { issue ->
-                                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                                Icon(
-                                                    imageVector = Icons.Default.PriorityHigh,
-                                                    contentDescription = null,
-                                                    tint = Color(0xFFD84315),
-                                                    modifier = Modifier.size(12.dp)
-                                                )
-                                                Spacer(modifier = Modifier.width(4.dp))
-                                                Text(
-                                                    text = issue,
-                                                    fontSize = 11.sp,
-                                                    color = Color(0xFF3E2723)
-                                                )
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                        } else {
-                            Text(
-                                text = if (isCiltNotDoneToday) "Belum ada data checklist untuk melihat temuan CILT." else "Tidak ada temuan ketidaksesuaian CILT. Seluruh poin standar terpenuhi.",
-                                fontSize = 11.sp,
-                                color = if (isCiltNotDoneToday) Color.Gray else Color(0xFF2E7D32)
-                            )
-                        }
-                    }
-                }
-            }
-        }
-
-        // ---------------------------------------------------------------------------------------------
-        // SECTION 3: LAPORAN RELIABILITY PM REAL-TIME
-        // ---------------------------------------------------------------------------------------------
-        if (selectedFilterTab == "Semua" || selectedFilterTab == "3. Reliability PM") {
-            item {
-                SectionHeader(
-                    icon = Icons.Default.Build,
-                    title = "3. Laporan Real-Time Reliability PM (Temuan Abnormality)",
-                    subtitle = "Laporan anomali mesin, RPN Score, White/Yellow Tag & respon cepat",
-                    accentColor = Color(0xFF5E35B1),
-                    alertCount = totalPmAlerts,
-                    onExportExcel = {
-                        exportReportType = "reliability"
-                        showExcelExportDialog = true
-                    }
-                )
-            }
-
-            val card3NeedsAttention = recentAbnormalityFindings.isNotEmpty()
-            item {
-                Card(
-                    colors = CardDefaults.cardColors(
-                        containerColor = if (card3NeedsAttention) Color(0xFFF3E5F5) else Color.White
-                    ),
-                    shape = RoundedCornerShape(14.dp),
-                    border = BorderStroke(
-                        1.dp,
-                        if (card3NeedsAttention) Color(0xFFBA68C8) else Color(0xFFE2E8F0)
-                    ),
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Text(
-                                "Daftar Temuan Real-Time Reliability PM",
-                                fontSize = 13.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = SlateGrey
-                            )
-                            Surface(
-                                color = if (recentAbnormalityFindings.isNotEmpty()) Color(0xFFFFEBEE) else Color(0xFFE8F5E9),
-                                shape = RoundedCornerShape(6.dp)
-                            ) {
-                                Text(
-                                    text = if (recentAbnormalityFindings.isNotEmpty()) "${recentAbnormalityFindings.size} Temuan Abnormality" else "0 Temuan",
-                                    fontSize = 10.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = if (recentAbnormalityFindings.isNotEmpty()) Color(0xFFC62828) else Color(0xFF2E7D32),
-                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
-                                )
-                            }
-                        }
-
-                        if (recentAbnormalityFindings.isNotEmpty()) {
-                            recentAbnormalityFindings.forEach { rep ->
-                                val isHighRpn = rep.rpn >= 100
-                                Surface(
-                                    color = if (isHighRpn) Color(0xFFFFEBEE) else Color(0xFFFAFAFA),
-                                    shape = RoundedCornerShape(10.dp),
-                                    border = BorderStroke(1.dp, if (isHighRpn) Color(0xFFEF9A9A) else Color(0xFFE0E0E0)),
-                                    modifier = Modifier.fillMaxWidth()
-                                ) {
-                                    Column(modifier = Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                                        Row(
-                                            modifier = Modifier.fillMaxWidth(),
-                                            horizontalArrangement = Arrangement.SpaceBetween,
-                                            verticalAlignment = Alignment.CenterVertically
-                                        ) {
-                                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                                Surface(
-                                                    color = if (rep.tagType.contains("Yellow", ignoreCase = true)) Color(0xFFFBC02D) else Color(0xFF78909C),
-                                                    shape = RoundedCornerShape(4.dp)
-                                                ) {
-                                                    Text(
-                                                        text = rep.tagType,
-                                                        color = if (rep.tagType.contains("Yellow", ignoreCase = true)) Color.Black else Color.White,
-                                                        fontSize = 9.sp,
-                                                        fontWeight = FontWeight.Bold,
-                                                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
-                                                    )
-                                                }
-                                                Spacer(modifier = Modifier.width(6.dp))
-                                                Text(
-                                                    text = rep.title,
-                                                    fontSize = 12.sp,
-                                                    fontWeight = FontWeight.Bold,
-                                                    color = SlateGrey
-                                                )
-                                            }
-
-                                            Surface(
-                                                color = if (isHighRpn) Color(0xFFC62828) else BrandGreen,
-                                                shape = RoundedCornerShape(4.dp)
-                                            ) {
-                                                Text(
-                                                    text = "RPN: ${rep.rpn}",
-                                                    color = Color.White,
-                                                    fontSize = 10.sp,
-                                                    fontWeight = FontWeight.Bold,
-                                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
-                                                )
-                                            }
-                                        }
-
-                                        Text(
-                                            text = rep.description,
-                                            fontSize = 11.sp,
-                                            color = Color.Black
-                                        )
-
-                                        Row(
-                                            modifier = Modifier.fillMaxWidth(),
-                                            horizontalArrangement = Arrangement.SpaceBetween
-                                        ) {
-                                            Text(
-                                                text = "Faktor: ${rep.factor} • PIC: ${rep.picName}",
-                                                fontSize = 10.sp,
-                                                color = Color.Gray
-                                            )
-                                            Text(
-                                                text = WibDateUtils.format("dd MMM yyyy, HH:mm", rep.timestamp) + " WIB",
-                                                fontSize = 10.sp,
-                                                color = Color.Gray
-                                            )
-                                        }
-                                    }
-                                }
-                            }
-                        } else {
-                            Text(
-                                text = "Belum ada temuan abnormality yang tercatat di menu Reliability PM.",
-                                fontSize = 11.sp,
-                                color = Color(0xFF2E7D32)
-                            )
-                        }
-                    }
-                }
-            }
-        }
-
-        // ---------------------------------------------------------------------------------------------
-        // SECTION 4: LAPORAN KEGIATAN FLUSHING & PROGRES AKTUAL H+1
-        // ---------------------------------------------------------------------------------------------
-        if (selectedFilterTab == "Semua" || selectedFilterTab == "4. Flushing") {
-            item {
-                SectionHeader(
-                    icon = Icons.Default.WaterDrop,
-                    title = "4. Laporan Kegiatan Flushing & Progres Aktual H+1",
-                    subtitle = "Pelaporan kegiatan $checkRangeString & monitoring pelaksanaan bertahap",
-                    accentColor = Color(0xFF00897B),
-                    alertCount = totalFlushingAlerts,
-                    onExportExcel = {
-                        exportReportType = "flushing"
-                        showExcelExportDialog = true
-                    }
-                )
-            }
-
-            val card4NeedsAttention = totalFlushingAlerts > 0
-            item {
-                Card(
-                    colors = CardDefaults.cardColors(
-                        containerColor = if (card4NeedsAttention) Color(0xFFFFF8E1) else Color.White
-                    ),
-                    shape = RoundedCornerShape(14.dp),
-                    border = BorderStroke(
-                        1.dp,
-                        if (card4NeedsAttention) Color(0xFFFFB74D) else Color(0xFFE2E8F0)
-                    ),
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Text(
-                                "Status Flushing Hari Ini ($checkRangeString)",
-                                fontSize = 13.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = SlateGrey
-                            )
-                            Surface(
-                                color = if (totalFlushingAlerts > 0) Color(0xFFFFEBEE) else Color(0xFFE8F5E9),
-                                shape = RoundedCornerShape(6.dp)
-                            ) {
-                                Text(
-                                    text = if (isFlushingNotDoneToday)
-                                        "1 Temuan (Belum Dikerjakan)"
-                                    else if (incompleteFlushingLogs.isNotEmpty())
-                                        "${incompleteFlushingLogs.size} Temuan (Siklus Tidak Tuntas)"
-                                    else
-                                        "0 Temuan (${todayFlushingLogs.size} Siklus 100% Selesai)",
-                                    fontSize = 10.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = if (totalFlushingAlerts > 0) Color(0xFFC62828) else Color(0xFF2E7D32),
-                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
-                                )
-                            }
-                        }
-
-                        if (isFlushingNotDoneToday) {
-                            Surface(
-                                color = Color(0xFFFFF8E1),
-                                shape = RoundedCornerShape(8.dp),
-                                border = BorderStroke(1.dp, Color(0xFFFFE082)),
-                                modifier = Modifier.fillMaxWidth()
-                            ) {
-                                Row(modifier = Modifier.padding(10.dp), verticalAlignment = Alignment.CenterVertically) {
-                                    Icon(
-                                        imageVector = Icons.Default.WarningAmber,
-                                        contentDescription = null,
-                                        tint = Color(0xFFF57C00),
-                                        modifier = Modifier.size(20.dp)
-                                    )
-                                    Spacer(modifier = Modifier.width(8.dp))
-                                    Text(
-                                        text = "Peringatan: Belum ada kegiatan flushing yang tercatat dari jam 07:00 sampai jam $currentHourMinute. Data akan diperbarui lagi $nextRenewalText.",
-                                        fontSize = 11.sp,
-                                        color = Color(0xFFBF360C),
-                                        fontWeight = FontWeight.SemiBold
-                                    )
-                                }
-                            }
-                        } else {
-                            Text(
-                                text = "Flushing berjalan aktif dengan total ${todayFlushingLogs.size} kali flushing terlaksana dari jam 07:00 sampai jam $currentHourMinute. Data akan diperbarui lagi $nextRenewalText.",
-                                fontSize = 11.sp,
-                                color = Color(0xFF2E7D32)
-                            )
-                        }
-
-                        // Incomplete Flushing cycle findings
-                        if (incompleteFlushingLogs.isNotEmpty()) {
-                            Text(
-                                "Temuan Siklus Flushing Tidak Tuntas (${incompleteFlushingLogs.size} Temuan):",
-                                fontSize = 12.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = SlateGrey
-                            )
-
-                            incompleteFlushingLogs.forEach { log ->
-                                Surface(
-                                    color = Color(0xFFFFF3E0),
-                                    shape = RoundedCornerShape(8.dp),
-                                    border = BorderStroke(1.dp, Color(0xFFFFB74D)),
-                                    modifier = Modifier.fillMaxWidth()
-                                ) {
-                                    Row(
-                                        modifier = Modifier.padding(10.dp),
-                                        horizontalArrangement = Arrangement.SpaceBetween,
-                                        verticalAlignment = Alignment.CenterVertically
-                                    ) {
-                                        Row(verticalAlignment = Alignment.CenterVertically) {
-                                            Surface(color = Color(0xFFE65100), shape = RoundedCornerShape(4.dp)) {
-                                                Text(log.unitName, color = Color.White, fontSize = 10.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp))
-                                            }
-                                            Spacer(modifier = Modifier.width(8.dp))
-                                            Column {
-                                                Text("${log.shift} • Operator: ${log.operatorName}", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = SlateGrey)
-                                                Text("${log.totalCount - log.completedCount} Langkah SOP Terlewati (${log.completedCount}/${log.totalCount} Selesai)", fontSize = 10.sp, color = Color(0xFFC62828), fontWeight = FontWeight.SemiBold)
-                                            }
-                                        }
-                                        Text(
-                                            text = WibDateUtils.format("HH:mm", log.timestamp) + " WIB",
-                                            fontSize = 10.sp,
-                                            color = Color.Gray
-                                        )
-                                    }
-                                }
-                            }
-                        }
-
-                        // PROGRES AKTUAL FLUSHING H+1
-                        Divider(color = Color(0xFFEEEEEE))
-
-                        Text(
-                            "Progres Aktual Flushing H+1 (Analisis Komparasi Kemarin vs Hari Ini):",
-                            fontSize = 12.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = SlateGrey
-                        )
-
-                        // Calculate KPI H+1
-                        val yesterdayUnits = yesterdayFlushingLogs.map { it.unitName }.distinct()
-                        val todayUnits = todayFlushingLogs.map { it.unitName }.distinct()
-                        val avgTasksCompletedToday = if (todayFlushingLogs.isNotEmpty()) {
-                            (todayFlushingLogs.sumOf { it.completedCount }.toFloat() / (todayFlushingLogs.size * 11) * 100).toInt()
-                        } else 0
-
-                        val avgTasksCompletedYesterday = if (yesterdayFlushingLogs.isNotEmpty()) {
-                            (yesterdayFlushingLogs.sumOf { it.completedCount }.toFloat() / (yesterdayFlushingLogs.size * 11) * 100).toInt()
-                        } else 0
-
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            Surface(
-                                color = Color(0xFFF1F8E9),
-                                shape = RoundedCornerShape(8.dp),
-                                modifier = Modifier.weight(1f)
-                            ) {
-                                Column(modifier = Modifier.padding(8.dp)) {
-                                    Text("Hari Ini (Aktual)", fontSize = 10.sp, color = Color.Gray)
-                                    Text("${todayFlushingLogs.size} Laporan", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = BrandGreen)
-                                    Text("${todayUnits.size} Unit aktif", fontSize = 10.sp, color = Color.Black)
-                                    Text("Kepatuhan: $avgTasksCompletedToday%", fontSize = 10.sp, fontWeight = FontWeight.SemiBold, color = BrandGreen)
-                                }
-                            }
-
-                            Surface(
-                                color = Color(0xFFECEFF1),
-                                shape = RoundedCornerShape(8.dp),
-                                modifier = Modifier.weight(1f)
-                            ) {
-                                Column(modifier = Modifier.padding(8.dp)) {
-                                    Text("Kemarin (H-1)", fontSize = 10.sp, color = Color.Gray)
-                                    Text("${yesterdayFlushingLogs.size} Laporan", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = SlateGrey)
-                                    Text("${yesterdayUnits.size} Unit aktif", fontSize = 10.sp, color = Color.Black)
-                                    Text("Kepatuhan: $avgTasksCompletedYesterday%", fontSize = 10.sp, fontWeight = FontWeight.SemiBold, color = SlateGrey)
-                                }
-                            }
-                        }
-
-                        // Progres H+1 Checklist detail
-                        if (todayFlushingLogs.isNotEmpty()) {
-                            Text(
-                                "Detail Log Flushing Terkini Hari Ini:",
-                                fontSize = 11.sp,
-                                fontWeight = FontWeight.SemiBold,
-                                color = SlateGrey
-                            )
-                            todayFlushingLogs.forEach { log ->
-                                Row(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .background(Color(0xFFF5F5F5), RoundedCornerShape(6.dp))
-                                        .padding(8.dp),
-                                    horizontalArrangement = Arrangement.SpaceBetween,
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Row(verticalAlignment = Alignment.CenterVertically) {
-                                        Surface(color = BrandGreen, shape = RoundedCornerShape(4.dp)) {
-                                            Text(log.unitName, color = Color.White, fontSize = 10.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(horizontal = 5.dp, vertical = 2.dp))
-                                        }
-                                        Spacer(modifier = Modifier.width(6.dp))
-                                        Text("${log.shift} • ${log.operatorName}", fontSize = 11.sp, color = Color.Black)
-                                    }
-                                    Text(
-                                        "${log.completedCount}/${log.totalCount} Selesai",
-                                        fontSize = 11.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        color = if (log.completedCount >= log.totalCount) BrandGreen else Color(0xFFE65100)
-                                    )
-                                }
-                            }
-                        }
-                    }
-                }
-            }
+        item {
+            Spacer(modifier = Modifier.height(24.dp))
         }
     }
 
@@ -1464,133 +1397,85 @@ fun ReportSummaryTile(
     title: String,
     alertCount: Int,
     color: Color,
+    isSelected: Boolean = false,
+    onClick: (() -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     val needsAttention = alertCount > 0
     Card(
         colors = CardDefaults.cardColors(
-            containerColor = if (needsAttention) color.copy(alpha = 0.08f) else Color.White
+            containerColor = when {
+                isSelected -> color.copy(alpha = 0.16f)
+                needsAttention -> color.copy(alpha = 0.08f)
+                else -> Color.White
+            }
         ),
         shape = RoundedCornerShape(12.dp),
-        border = BorderStroke(1.dp, if (needsAttention) color.copy(alpha = 0.6f) else Color(0xFFE2E8F0)),
-        modifier = modifier
+        border = BorderStroke(
+            width = if (isSelected) 2.dp else 1.dp,
+            color = when {
+                isSelected -> color
+                needsAttention -> color.copy(alpha = 0.6f)
+                else -> Color(0xFFE2E8F0)
+            }
+        ),
+        elevation = CardDefaults.cardElevation(defaultElevation = if (isSelected) 3.dp else 0.dp),
+        modifier = modifier.clickable(enabled = onClick != null) { onClick?.invoke() }
     ) {
         Column(
-            modifier = Modifier.padding(horizontal = 8.dp, vertical = 10.dp),
+            modifier = Modifier.padding(horizontal = 6.dp, vertical = 9.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center
         ) {
-            Text(
-                text = "$alertCount",
-                fontSize = 18.sp,
-                fontWeight = FontWeight.Bold,
-                color = color
-            )
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.Center
+            ) {
+                Text(
+                    text = "$alertCount",
+                    fontSize = 18.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = color
+                )
+                if (isSelected) {
+                    Spacer(modifier = Modifier.width(3.dp))
+                    Icon(
+                        imageVector = Icons.Default.CheckCircle,
+                        contentDescription = "Dipilih",
+                        tint = color,
+                        modifier = Modifier.size(13.dp)
+                    )
+                }
+            }
             Spacer(modifier = Modifier.height(2.dp))
             Text(
                 text = title,
                 fontSize = 9.sp,
-                fontWeight = FontWeight.SemiBold,
-                color = SlateGrey,
+                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.SemiBold,
+                color = if (isSelected) color else SlateGrey,
                 maxLines = 1,
                 textAlign = TextAlign.Center
             )
             Text(
                 text = if (needsAttention) "$alertCount Temuan" else "0 Temuan (Aman)",
                 fontSize = 8.sp,
-                fontWeight = if (needsAttention) FontWeight.Bold else FontWeight.Normal,
+                fontWeight = if (needsAttention || isSelected) FontWeight.Bold else FontWeight.Normal,
                 color = if (needsAttention) color else Color(0xFF2E7D32)
             )
-        }
-    }
-}
-
-@Composable
-fun SectionHeader(
-    icon: ImageVector,
-    title: String,
-    subtitle: String,
-    accentColor: Color,
-    alertCount: Int = 0,
-    onExportExcel: (() -> Unit)? = null
-) {
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.SpaceBetween
-    ) {
-        Row(
-            verticalAlignment = Alignment.Top,
-            modifier = Modifier.weight(1f)
-        ) {
-            Box(
-                modifier = Modifier
-                    .size(34.dp)
-                    .background(accentColor.copy(alpha = 0.15f), RoundedCornerShape(8.dp)),
-                contentAlignment = Alignment.Center
-            ) {
-                Icon(
-                    imageVector = icon,
-                    contentDescription = null,
-                    tint = accentColor,
-                    modifier = Modifier.size(20.dp)
-                )
-            }
-            Spacer(modifier = Modifier.width(10.dp))
-            Column {
-                Text(
-                    text = title,
-                    fontSize = 13.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = SlateGrey
-                )
-                Spacer(modifier = Modifier.height(4.dp))
+            if (isSelected) {
+                Spacer(modifier = Modifier.height(3.dp))
                 Surface(
-                    color = if (alertCount > 0) accentColor.copy(alpha = 0.15f) else Color(0xFFE8F5E9),
-                    shape = RoundedCornerShape(6.dp)
+                    color = color,
+                    shape = RoundedCornerShape(4.dp)
                 ) {
                     Text(
-                        text = if (alertCount > 0) "$alertCount Temuan" else "0 Temuan",
-                        fontSize = 10.sp,
+                        text = "AKTIF",
+                        fontSize = 7.5.sp,
                         fontWeight = FontWeight.Bold,
-                        color = if (alertCount > 0) accentColor else Color(0xFF2E7D32),
-                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                        color = Color.White,
+                        modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
                     )
                 }
-                Spacer(modifier = Modifier.height(3.dp))
-                Text(
-                    text = subtitle,
-                    fontSize = 10.sp,
-                    color = Color.Gray
-                )
-            }
-        }
-
-        if (onExportExcel != null) {
-            Spacer(modifier = Modifier.width(8.dp))
-            FilledTonalButton(
-                onClick = onExportExcel,
-                colors = ButtonDefaults.filledTonalButtonColors(
-                    containerColor = Color(0xFF2E7D32).copy(alpha = 0.12f),
-                    contentColor = Color(0xFF1B5E20)
-                ),
-                shape = RoundedCornerShape(8.dp),
-                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
-                modifier = Modifier.height(34.dp)
-            ) {
-                Icon(
-                    imageVector = Icons.Default.FileDownload,
-                    contentDescription = "Ekspor Excel",
-                    modifier = Modifier.size(15.dp),
-                    tint = Color(0xFF1B5E20)
-                )
-                Spacer(modifier = Modifier.width(4.dp))
-                Text(
-                    text = "Excel",
-                    fontSize = 11.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = Color(0xFF1B5E20)
-                )
             }
         }
     }
