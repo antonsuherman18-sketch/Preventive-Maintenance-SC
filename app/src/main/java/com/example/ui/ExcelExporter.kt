@@ -98,7 +98,7 @@ object ExcelExporter {
         }
         sb.append("Total Data:,").append(filteredLogs.size).append("\n\n")
 
-        sb.append("ID,Timestamp,Waktu,Machine/Unit,DE Vibration (mm/s),NDE Vibration (mm/s),Motor Vibration (mm/s),Gearbox Vibration (mm/s),Bowl Vibration (mm/s),Bearing Temp (°C),Motor Temp (°C),Alarm State,Greasing,Leakage,Sound State,Catatan / Parameter\n")
+        sb.append("ID,Timestamp,Waktu,Machine/Unit,Axial 1 (mm/s),Axial 2 (mm/s),Horizontal (mm/s),Vertikal (mm/s),Bearing Temp (°C),Motor Temp (°C),Alarm State,Greasing,Leakage,Sound State,Catatan / Parameter\n")
 
         filteredLogs.sortedByDescending { it.timestamp }.forEach { log ->
             val dateStr = dateFormat.format(Date(log.timestamp))
@@ -118,7 +118,6 @@ object ExcelExporter {
                 .append(String.format(Locale.US, "%.2f", log.nonDriveEndVibration)).append(",")
                 .append(String.format(Locale.US, "%.2f", log.motorBearingVibration)).append(",")
                 .append(String.format(Locale.US, "%.2f", log.gearboxBearingVibration)).append(",")
-                .append(String.format(Locale.US, "%.2f", log.bowlVibration)).append(",")
                 .append(String.format(Locale.US, "%.1f", log.bearingTemp)).append(",")
                 .append(String.format(Locale.US, "%.1f", log.motorTemp)).append(",")
                 .append(escapeCsv(log.alarmState)).append(",")
@@ -241,15 +240,16 @@ object ExcelExporter {
         sb.append("Total Abnormality Reports:,").append(filteredReports.size).append("\n")
         sb.append("Total PM Checks:,").append(filteredChecks.size).append("\n\n")
 
-        sb.append("=== DAFTAR TEMUAN ABNORMALITY & TAGGING ===\n")
-        sb.append("ID,Waktu,Judul / Temuan,Tag Type,RPN Score,Severity,Occurrence,Detection,Faktor 4M,PIC Pelapor,Deskripsi Temuan\n")
+        sb.append("=== DAFTAR TEMUAN ABNORMALITY ===\n")
+        sb.append("ID,Waktu,Judul / Temuan,Status,Mekanik Perbaikan,RPN Score,Severity,Occurrence,Detection,Faktor 4M,PIC Pelapor,Deskripsi Temuan\n")
 
         filteredReports.sortedByDescending { it.timestamp }.forEach { rep ->
             val dateStr = dateFormat.format(Date(rep.timestamp))
             sb.append(rep.id).append(",")
                 .append(escapeCsv(dateStr)).append(",")
                 .append(escapeCsv(rep.title)).append(",")
-                .append(escapeCsv(rep.tagType)).append(",")
+                .append(escapeCsv(rep.status)).append(",")
+                .append(escapeCsv(rep.mechanicName)).append(",")
                 .append(rep.rpn).append(",")
                 .append(rep.severityScore).append(",")
                 .append(rep.occurrenceScore).append(",")
@@ -380,7 +380,7 @@ object ExcelExporter {
 
         // 1. Monitoring SC
         sb.append("=== 1. MONITORING & TREND ANALYSIS CENTRIFUGE ===\n")
-        sb.append("ID,Timestamp,Waktu,Machine/Unit,DE Vibration,NDE Vibration,Motor Vibration,Gearbox Vibration,Bowl Vibration,Bearing Temp,Motor Temp,Alarm State,Greasing,Leakage,Sound State,Catatan\n")
+        sb.append("ID,Timestamp,Waktu,Machine/Unit,Axial 1 (mm/s),Axial 2 (mm/s),Horizontal (mm/s),Vertikal (mm/s),Bearing Temp,Motor Temp,Alarm State,Greasing,Leakage,Sound State,Catatan\n")
         filteredVib.sortedByDescending { it.timestamp }.forEach { log ->
             val dateStr = dateFormat.format(Date(log.timestamp))
             val machineName = log.comments.lines().firstOrNull()?.take(30) ?: "SC Centrifuge"
@@ -398,7 +398,6 @@ object ExcelExporter {
                 .append(String.format(Locale.US, "%.2f", log.nonDriveEndVibration)).append(",")
                 .append(String.format(Locale.US, "%.2f", log.motorBearingVibration)).append(",")
                 .append(String.format(Locale.US, "%.2f", log.gearboxBearingVibration)).append(",")
-                .append(String.format(Locale.US, "%.2f", log.bowlVibration)).append(",")
                 .append(String.format(Locale.US, "%.1f", log.bearingTemp)).append(",")
                 .append(String.format(Locale.US, "%.1f", log.motorTemp)).append(",")
                 .append(escapeCsv(log.alarmState)).append(",")
@@ -436,13 +435,14 @@ object ExcelExporter {
 
         // 3. Reliability & Abnormality
         sb.append("\n=== 3. TEMUAN ABNORMALITY & RELIABILITY PM ===\n")
-        sb.append("ID,Waktu,Judul / Temuan,Tag Type,RPN Score,Severity,Occurrence,Detection,Faktor 4M,PIC Pelapor,Deskripsi\n")
+        sb.append("ID,Waktu,Judul / Temuan,Status,Mekanik Perbaikan,RPN Score,Severity,Occurrence,Detection,Faktor 4M,PIC Pelapor,Deskripsi\n")
         filteredReports.sortedByDescending { it.timestamp }.forEach { rep ->
             val dateStr = dateFormat.format(Date(rep.timestamp))
             sb.append(rep.id).append(",")
                 .append(escapeCsv(dateStr)).append(",")
                 .append(escapeCsv(rep.title)).append(",")
-                .append(escapeCsv(rep.tagType)).append(",")
+                .append(escapeCsv(rep.status)).append(",")
+                .append(escapeCsv(rep.mechanicName)).append(",")
                 .append(rep.rpn).append(",")
                 .append(rep.severityScore).append(",")
                 .append(rep.occurrenceScore).append(",")

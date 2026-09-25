@@ -179,7 +179,11 @@ class FirestoreSyncManager(
                                         rpn = rpn,
                                         photoUri = doc.getString("photoUri"),
                                         picName = doc.getString("picName") ?: "Anton Suherman",
-                                        tagType = doc.getString("tagType") ?: "White Tag",
+                                        tagType = doc.getString("tagType") ?: "",
+                                        status = doc.getString("status") ?: "Open",
+                                        mechanicName = doc.getString("mechanicName") ?: "",
+                                        repairNotes = doc.getString("repairNotes") ?: "",
+                                        resolvedTimestamp = doc.getLong("resolvedTimestamp") ?: 0L,
                                         isSynced = true
                                     )
                                     db.abnormalityDao().insertReport(item)
@@ -447,6 +451,10 @@ class FirestoreSyncManager(
             "rpn" to report.rpn,
             "picName" to report.picName,
             "tagType" to report.tagType,
+            "status" to report.status,
+            "mechanicName" to report.mechanicName,
+            "repairNotes" to report.repairNotes,
+            "resolvedTimestamp" to report.resolvedTimestamp,
             "lastUpdated" to System.currentTimeMillis()
         )
         report.photoUri?.let { data["photoUri"] = it }

@@ -68,6 +68,9 @@ interface AbnormalityDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertReport(report: AbnormalityReport): Long
 
+    @Update
+    suspend fun updateReport(report: AbnormalityReport)
+
     @Query("UPDATE abnormality_reports SET isSynced = 1 WHERE id = :id")
     suspend fun markSynced(id: Long)
 

@@ -42,6 +42,10 @@ import androidx.compose.ui.text.style.BaselineShift
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
+import androidx.compose.foundation.gestures.detectTransformGestures
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
 import androidx.compose.ui.graphics.StrokeCap
@@ -364,6 +368,7 @@ fun CentrifugeApp(viewModel: CentrifugeViewModel) {
                     Screen.Abnormality -> AbnormalityScreen(
                         reports = abnormalityReports,
                         onAddReport = { viewModel.addAbnormalityReport(it) },
+                        onUpdateReport = { viewModel.updateAbnormalityReport(it) },
                         onDeleteReport = { viewModel.deleteReport(it) }
                     )
                     Screen.Training -> FlushingScreen(
@@ -887,8 +892,48 @@ fun ReportRowItem(
     value: Float?,
     unit: String,
     threshold: Float,
-    isDegree: Boolean = false
+    isDegree: Boolean = false,
+    infoText: String? = null
 ) {
+    var showInfoDialog by remember { mutableStateOf(false) }
+
+    if (showInfoDialog && infoText != null) {
+        AlertDialog(
+            onDismissRequest = { showInfoDialog = false },
+            icon = {
+                Icon(
+                    imageVector = Icons.Default.Info,
+                    contentDescription = "Informasi Titik Ukur",
+                    tint = BrandGreen,
+                    modifier = Modifier.size(28.dp)
+                )
+            },
+            title = {
+                Text(
+                    text = "Titik Ukur: $label",
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 15.sp,
+                    color = SlateGrey
+                )
+            },
+            text = {
+                Text(
+                    text = infoText,
+                    fontSize = 13.sp,
+                    color = Color(0xFF1E293B),
+                    lineHeight = 18.sp
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = { showInfoDialog = false }) {
+                    Text("Tutup", fontWeight = FontWeight.Bold, color = BrandGreen)
+                }
+            },
+            containerColor = Color.White,
+            shape = RoundedCornerShape(12.dp)
+        )
+    }
+
     val isZeroOrNull = value == null || value == 0f
     val isRed = !isZeroOrNull && (value!! > threshold)
     val isGreen = !isZeroOrNull && (value!! <= threshold)
@@ -903,13 +948,34 @@ fun ReportRowItem(
             .padding(vertical = 3.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Text(
-            text = "$number. $label :",
-            fontSize = 12.sp,
-            fontWeight = FontWeight.SemiBold,
-            color = SlateGrey,
-            modifier = Modifier.width(135.dp)
-        )
+        Row(
+            modifier = Modifier.width(135.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = "$number. $label :",
+                fontSize = 12.sp,
+                fontWeight = FontWeight.SemiBold,
+                color = SlateGrey,
+                modifier = Modifier.weight(1f, fill = false),
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+            if (infoText != null) {
+                Spacer(modifier = Modifier.width(2.dp))
+                IconButton(
+                    onClick = { showInfoDialog = true },
+                    modifier = Modifier.size(22.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Info,
+                        contentDescription = "Info $label",
+                        tint = BrandGreen,
+                        modifier = Modifier.size(15.dp)
+                    )
+                }
+            }
+        }
         Box(
             modifier = Modifier
                 .width(84.dp)
@@ -996,6 +1062,1071 @@ fun ReportStatusRowItem(
 }
 
 @Composable
+fun CentrifugeTrendCanvas(
+    modifier: Modifier = Modifier,
+    trendTabSelection: Int,
+    historyPoints: List<Float>,
+    devVibPoints: List<Float>,
+    ndevVibPoints: List<Float>,
+    bearingTempPoints: List<Float>,
+    greasingPoints: List<Float>,
+    selectedUnit: CentrifugeUnitState,
+    timeRangeSelection: Int,
+    isEnlarged: Boolean = false
+) {
+    Canvas(modifier = modifier) {
+        val width = size.width
+        val height = size.height
+        val points = historyPoints.size
+        val spacing = if (points > 1) width / (points - 1) else 0f
+        val getX: (Int) -> Float = { idx ->
+            if (points <= 1) width / 2f else idx * spacing
+        }
+
+        // Horizontal Gridlines for enlarged mode
+        if (isEnlarged) {
+            val gridCount = 4
+            for (g in 1..gridCount) {
+                val yG = height * (g.toFloat() / (gridCount + 1))
+                drawLine(
+                    color = Color.LightGray.copy(alpha = 0.28f),
+                    start = Offset(0f, yG),
+                    end = Offset(width, yG),
+                    strokeWidth = 1f
+                )
+            }
+        }
+
+        if (trendTabSelection == 0) {
+            // Vibration Chart (Max 10 mm/s)
+            val maxScale = 10f
+            val warningY = height - (selectedUnit.warningVib / maxScale) * height
+            val criticalY = height - (selectedUnit.criticalVib / maxScale) * height
+
+            // Warning threshold limit line
+            drawLine(
+                color = BrandYellow.copy(alpha = 0.6f),
+                start = Offset(0f, warningY),
+                end = Offset(width, warningY),
+                strokeWidth = 2f
+            )
+            // Critical threshold limit line (Merah)
+            drawLine(
+                color = BrandRed.copy(alpha = 0.75f),
+                start = Offset(0f, criticalY),
+                end = Offset(width, criticalY),
+                strokeWidth = 3f
+            )
+
+            // Plot DE Vibration Line Segments with dynamic Critical Red coloring
+            for (index in 1 until devVibPoints.size) {
+                val prevVib = devVibPoints[index - 1]
+                val currVib = devVibPoints[index]
+                val prevX = getX(index - 1)
+                val prevY = (height - (prevVib / maxScale).coerceIn(0f, 1f) * height).coerceIn(16f, height - 16f)
+                val currX = getX(index)
+                val currY = (height - (currVib / maxScale).coerceIn(0f, 1f) * height).coerceIn(16f, height - 16f)
+
+                val isSegCritical = currVib >= selectedUnit.criticalVib || prevVib >= selectedUnit.criticalVib
+                val isSegWarning = currVib >= selectedUnit.warningVib || prevVib >= selectedUnit.warningVib
+                val segColor = if (isSegCritical) BrandRed else if (isSegWarning) BrandOrange else BrandGreen
+                val strokeW = if (isSegCritical) 5.5f else 4f
+
+                drawLine(
+                    color = segColor,
+                    start = Offset(prevX, prevY),
+                    end = Offset(currX, currY),
+                    strokeWidth = strokeW,
+                    cap = StrokeCap.Round
+                )
+            }
+
+            // Plot DE Vibration Dots
+            devVibPoints.forEachIndexed { index, valVib ->
+                val x = getX(index)
+                val y = (height - (valVib / maxScale).coerceIn(0f, 1f) * height).coerceIn(16f, height - 16f)
+                val isCritical = valVib >= selectedUnit.criticalVib
+                val isWarning = valVib >= selectedUnit.warningVib
+                val dotColor = if (isCritical) BrandRed else if (isWarning) BrandOrange else BrandGreen
+                val dotRadius = if (isCritical) 6.5f else 4.5f
+
+                if (isCritical) {
+                    drawCircle(
+                        color = BrandRed.copy(alpha = 0.35f),
+                        radius = 11f,
+                        center = Offset(x, y)
+                    )
+                }
+                drawCircle(
+                    color = dotColor,
+                    radius = dotRadius,
+                    center = Offset(x, y)
+                )
+            }
+
+            // Plot NDE Vibration Line Segments (Thickened Grey Line)
+            for (index in 1 until ndevVibPoints.size) {
+                val prevVib = ndevVibPoints[index - 1]
+                val currVib = ndevVibPoints[index]
+                val prevX = getX(index - 1)
+                val prevY = (height - (prevVib / maxScale).coerceIn(0f, 1f) * height).coerceIn(16f, height - 16f)
+                val currX = getX(index)
+                val currY = (height - (currVib / maxScale).coerceIn(0f, 1f) * height).coerceIn(16f, height - 16f)
+
+                val isCritical = currVib >= selectedUnit.criticalVib || prevVib >= selectedUnit.criticalVib
+                val isWarning = currVib >= selectedUnit.warningVib || prevVib >= selectedUnit.warningVib
+                val segColor = if (isCritical) BrandRed else if (isWarning) BrandOrange.copy(alpha = 0.9f) else Color(0xFF64748B)
+                val strokeW = if (isCritical) (if (isEnlarged) 7f else 5.5f) else (if (isEnlarged) 5.5f else 4.5f)
+
+                drawLine(
+                    color = segColor,
+                    start = Offset(prevX, prevY),
+                    end = Offset(currX, currY),
+                    strokeWidth = strokeW,
+                    cap = StrokeCap.Round
+                )
+            }
+
+            // Plot NDE Vibration Dots
+            ndevVibPoints.forEachIndexed { index, valNde ->
+                val x = getX(index)
+                val y = (height - (valNde / maxScale).coerceIn(0f, 1f) * height).coerceIn(16f, height - 16f)
+                val isCritical = valNde >= selectedUnit.criticalVib
+                val isWarning = valNde >= selectedUnit.warningVib
+                val dotColor = if (isCritical) BrandRed else if (isWarning) BrandOrange else Color(0xFF64748B)
+                val dotRadius = if (isCritical) (if (isEnlarged) 8f else 6.5f) else (if (isEnlarged) 5.5f else 4.5f)
+
+                if (isCritical) {
+                    drawCircle(
+                        color = BrandRed.copy(alpha = 0.35f),
+                        radius = dotRadius * 1.7f,
+                        center = Offset(x, y)
+                    )
+                }
+                drawCircle(
+                    color = dotColor,
+                    radius = dotRadius,
+                    center = Offset(x, y)
+                )
+            }
+
+            // Draw Vibration measurement numbers
+            drawIntoCanvas { canvas ->
+                val paintCritical = Paint().apply {
+                    color = android.graphics.Color.rgb(186, 26, 26) // BrandRed
+                    textSize = if (isEnlarged) 28f else 25f
+                    typeface = Typeface.DEFAULT_BOLD
+                    textAlign = Paint.Align.CENTER
+                    isAntiAlias = true
+                }
+                val paintWarning = Paint().apply {
+                    color = android.graphics.Color.rgb(245, 124, 0) // BrandOrange
+                    textSize = if (isEnlarged) 26f else 24f
+                    typeface = Typeface.DEFAULT_BOLD
+                    textAlign = Paint.Align.CENTER
+                    isAntiAlias = true
+                }
+                val paintDe = Paint().apply {
+                    color = android.graphics.Color.rgb(0, 106, 106) // BrandGreen
+                    textSize = if (isEnlarged) 26f else 24f
+                    typeface = Typeface.DEFAULT_BOLD
+                    textAlign = Paint.Align.CENTER
+                    isAntiAlias = true
+                }
+                val paintNde = Paint().apply {
+                    color = android.graphics.Color.rgb(71, 85, 105) // SlateGrey / Dark Grey
+                    textSize = if (isEnlarged) 22f else 20f
+                    typeface = Typeface.DEFAULT_BOLD
+                    textAlign = Paint.Align.CENTER
+                    isAntiAlias = true
+                }
+
+                devVibPoints.forEachIndexed { index, valVib ->
+                    val x = getX(index)
+                    val yDe = (height - (valVib / maxScale).coerceIn(0f, 1f) * height).coerceIn(16f, height - 16f)
+                    val labelDe = String.format(Locale.US, "%.1f", valVib)
+                    val p = if (valVib >= selectedUnit.criticalVib) paintCritical else if (valVib >= selectedUnit.warningVib) paintWarning else paintDe
+                    canvas.nativeCanvas.drawText(labelDe, x, (yDe - 10f).coerceAtLeast(20f), p)
+                }
+
+                ndevVibPoints.forEachIndexed { index, valNde ->
+                    val x = getX(index)
+                    val yNde = (height - (valNde / maxScale).coerceIn(0f, 1f) * height).coerceIn(16f, height - 16f)
+                    val labelNde = String.format(Locale.US, "%.1f", valNde)
+                    val p = if (valNde >= selectedUnit.criticalVib) paintCritical else paintNde
+                    canvas.nativeCanvas.drawText(labelNde, x, (yNde + 22f).coerceAtMost(height - 4f), p)
+                }
+            }
+        } else if (trendTabSelection == 1) {
+            // Temperature Chart (Max 100 °C)
+            val maxScale = 100f
+            val warningY = height - (selectedUnit.warningTemp / maxScale) * height
+            val criticalY = height - (selectedUnit.criticalTemp / maxScale) * height
+
+            // Warning Temp threshold line
+            drawLine(
+                color = BrandYellow.copy(alpha = 0.6f),
+                start = Offset(0f, warningY),
+                end = Offset(width, warningY),
+                strokeWidth = 2f
+            )
+            // Critical Temp threshold line (Merah)
+            drawLine(
+                color = BrandRed.copy(alpha = 0.75f),
+                start = Offset(0f, criticalY),
+                end = Offset(width, criticalY),
+                strokeWidth = 3f
+            )
+
+            // Plot Bearing Temp Line Segments with dynamic Critical Red coloring
+            for (index in 1 until bearingTempPoints.size) {
+                val prevTemp = bearingTempPoints[index - 1]
+                val currTemp = bearingTempPoints[index]
+                val prevX = getX(index - 1)
+                val prevY = (height - (prevTemp / maxScale).coerceIn(0f, 1f) * height).coerceIn(16f, height - 16f)
+                val currX = getX(index)
+                val currY = (height - (currTemp / maxScale).coerceIn(0f, 1f) * height).coerceIn(16f, height - 16f)
+
+                val isSegCritical = currTemp >= selectedUnit.criticalTemp || prevTemp >= selectedUnit.criticalTemp
+                val isSegWarning = currTemp >= selectedUnit.warningTemp || prevTemp >= selectedUnit.warningTemp
+                val segColor = if (isSegCritical) BrandRed else if (isSegWarning) BrandOrange else BrandGreen
+                val strokeW = if (isSegCritical) 5.5f else 4f
+
+                drawLine(
+                    color = segColor,
+                    start = Offset(prevX, prevY),
+                    end = Offset(currX, currY),
+                    strokeWidth = strokeW,
+                    cap = StrokeCap.Round
+                )
+            }
+
+            // Plot Bearing Temp Dots
+            bearingTempPoints.forEachIndexed { index, valTemp ->
+                val x = getX(index)
+                val y = (height - (valTemp / maxScale).coerceIn(0f, 1f) * height).coerceIn(16f, height - 16f)
+                val isCritical = valTemp >= selectedUnit.criticalTemp
+                val isWarning = valTemp >= selectedUnit.warningTemp
+                val dotColor = if (isCritical) BrandRed else if (isWarning) BrandOrange else BrandGreen
+                val dotRadius = if (isCritical) 6.5f else 4.5f
+
+                if (isCritical) {
+                    drawCircle(
+                        color = BrandRed.copy(alpha = 0.35f),
+                        radius = 11f,
+                        center = Offset(x, y)
+                    )
+                }
+                drawCircle(
+                    color = dotColor,
+                    radius = dotRadius,
+                    center = Offset(x, y)
+                )
+            }
+
+            // Draw Temperature measurement numbers
+            drawIntoCanvas { canvas ->
+                val paintTempCritical = Paint().apply {
+                    color = android.graphics.Color.rgb(186, 26, 26) // BrandRed
+                    textSize = if (isEnlarged) 28f else 25f
+                    typeface = Typeface.DEFAULT_BOLD
+                    textAlign = Paint.Align.CENTER
+                    isAntiAlias = true
+                }
+                val paintTempWarning = Paint().apply {
+                    color = android.graphics.Color.rgb(245, 124, 0) // BrandOrange
+                    textSize = if (isEnlarged) 26f else 24f
+                    typeface = Typeface.DEFAULT_BOLD
+                    textAlign = Paint.Align.CENTER
+                    isAntiAlias = true
+                }
+                val paintTempNormal = Paint().apply {
+                    color = android.graphics.Color.rgb(0, 106, 106) // BrandGreen
+                    textSize = if (isEnlarged) 26f else 24f
+                    typeface = Typeface.DEFAULT_BOLD
+                    textAlign = Paint.Align.CENTER
+                    isAntiAlias = true
+                }
+
+                bearingTempPoints.forEachIndexed { index, valTemp ->
+                    val x = getX(index)
+                    val y = (height - (valTemp / maxScale).coerceIn(0f, 1f) * height).coerceIn(16f, height - 16f)
+                    val labelTemp = "${String.format(Locale.US, "%.1f", valTemp)}°"
+                    val p = if (valTemp >= selectedUnit.criticalTemp) paintTempCritical else if (valTemp >= selectedUnit.warningTemp) paintTempWarning else paintTempNormal
+                    canvas.nativeCanvas.drawText(labelTemp, x, (y - 10f).coerceAtLeast(20f), p)
+                }
+            }
+        } else {
+            // Greasing Chart (0% - 100%)
+            val maxScale = 100f
+            val standardY = height - (100f / maxScale).coerceIn(0f, 1f) * height + 16f
+            val criticalY = height - (50f / maxScale).coerceIn(0f, 1f) * height
+
+            // Target 100% threshold line (Green)
+            drawLine(
+                color = BrandGreen.copy(alpha = 0.5f),
+                start = Offset(0f, standardY),
+                end = Offset(width, standardY),
+                strokeWidth = 2f
+            )
+            // Critical Greasing threshold line (Red, < 50%)
+            drawLine(
+                color = BrandRed.copy(alpha = 0.75f),
+                start = Offset(0f, criticalY),
+                end = Offset(width, criticalY),
+                strokeWidth = 2f
+            )
+
+            // Plot Greasing Line Segments with dynamic Critical Red coloring
+            for (index in 1 until greasingPoints.size) {
+                val prevGreas = greasingPoints[index - 1]
+                val currGreas = greasingPoints[index]
+                val prevX = getX(index - 1)
+                val prevY = (height - (prevGreas / maxScale).coerceIn(0f, 1f) * height).coerceIn(16f, height - 16f)
+                val currX = getX(index)
+                val currY = (height - (currGreas / maxScale).coerceIn(0f, 1f) * height).coerceIn(16f, height - 16f)
+
+                val isSegCritical = currGreas < 50f || prevGreas < 50f
+                val segColor = if (isSegCritical) BrandRed else BrandGreen
+                val strokeW = if (isSegCritical) 5.5f else 4f
+
+                drawLine(
+                    color = segColor,
+                    start = Offset(prevX, prevY),
+                    end = Offset(currX, currY),
+                    strokeWidth = strokeW,
+                    cap = StrokeCap.Round
+                )
+            }
+
+            // Plot Greasing Dots and vertical pillars
+            greasingPoints.forEachIndexed { index, valGreas ->
+                val x = getX(index)
+                val y = (height - (valGreas / maxScale).coerceIn(0f, 1f) * height).coerceIn(16f, height - 16f)
+                val isCritical = valGreas < 50f
+                val dotColor = if (isCritical) BrandRed else BrandGreen
+                val dotRadius = if (isCritical) 6.5f else 5f
+
+                // Subtle vertical guideline to baseline
+                drawLine(
+                    color = dotColor.copy(alpha = 0.25f),
+                    start = Offset(x, y),
+                    end = Offset(x, height - 8f),
+                    strokeWidth = 3f,
+                    cap = StrokeCap.Round
+                )
+
+                if (isCritical) {
+                    drawCircle(
+                        color = BrandRed.copy(alpha = 0.35f),
+                        radius = 11f,
+                        center = Offset(x, y)
+                    )
+                }
+                drawCircle(
+                    color = dotColor,
+                    radius = dotRadius,
+                    center = Offset(x, y)
+                )
+            }
+
+            // Draw Greasing status labels along the line
+            drawIntoCanvas { canvas ->
+                val paintGreasCritical = Paint().apply {
+                    color = android.graphics.Color.rgb(186, 26, 26) // BrandRed
+                    textSize = if (isEnlarged) 24f else 21f
+                    typeface = Typeface.DEFAULT_BOLD
+                    textAlign = Paint.Align.CENTER
+                    isAntiAlias = true
+                }
+                val paintGreasNormal = Paint().apply {
+                    color = android.graphics.Color.rgb(0, 106, 106) // BrandGreen
+                    textSize = if (isEnlarged) 24f else 21f
+                    typeface = Typeface.DEFAULT_BOLD
+                    textAlign = Paint.Align.CENTER
+                    isAntiAlias = true
+                }
+
+                greasingPoints.forEachIndexed { index, valGreas ->
+                    val x = getX(index)
+                    val y = (height - (valGreas / maxScale).coerceIn(0f, 1f) * height).coerceIn(16f, height - 16f)
+                    val isCritical = valGreas < 50f
+                    val labelGreas = if (timeRangeSelection == 2) {
+                        if (valGreas >= 50f) "${valGreas.toInt()}% OK" else "${valGreas.toInt()}%"
+                    } else {
+                        if (isCritical) "0% Belum" else "100% OK"
+                    }
+                    val p = if (isCritical) paintGreasCritical else paintGreasNormal
+                    canvas.nativeCanvas.drawText(labelGreas, x, (y - 10f).coerceAtLeast(20f), p)
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun TrendChartXAxisLabels(
+    timeRangeSelection: Int,
+    todayUnitLogs: List<VibrationLog>,
+    monthlyWeekIntervals: List<MonthlyWeekInterval>,
+    customUnitLogs: List<VibrationLog>,
+    customStartDate: Long,
+    customEndDate: Long
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 4.dp),
+        horizontalArrangement = Arrangement.SpaceBetween
+    ) {
+        when (timeRangeSelection) {
+            0 -> {
+                // Hari Ini: Menampilkan waktu input di hari ini
+                if (todayUnitLogs.isNotEmpty()) {
+                    if (todayUnitLogs.size == 1) {
+                        Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+                            Text(
+                                text = "Pengukuran: ${WibDateUtils.format("HH:mm", todayUnitLogs[0].timestamp)} WIB (Hari Ini)",
+                                fontSize = 9.sp,
+                                color = SlateGrey,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                    } else {
+                        todayUnitLogs.forEachIndexed { idx, log ->
+                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                Text(
+                                    text = "Input #${idx + 1}",
+                                    fontSize = 8.5.sp,
+                                    color = SlateGrey,
+                                    fontWeight = FontWeight.Bold
+                                )
+                                Text(
+                                    text = "${WibDateUtils.format("HH:mm", log.timestamp)} WIB",
+                                    fontSize = 8.sp,
+                                    color = Color.Gray
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+            1 -> {
+                // Seminggu: 7 hari kebelakang (H-6 s/d Hari Ini dalam WIB)
+                val weeklyLabels = remember {
+                    List(7) { i ->
+                        val offsetDays = i - 6
+                        val cal = WibDateUtils.getCalendar().apply {
+                            add(Calendar.DAY_OF_YEAR, offsetDays)
+                        }
+                        val dayName = when (cal.get(Calendar.DAY_OF_WEEK)) {
+                            Calendar.SUNDAY -> "Min"
+                            Calendar.MONDAY -> "Sen"
+                            Calendar.TUESDAY -> "Sel"
+                            Calendar.WEDNESDAY -> "Rab"
+                            Calendar.THURSDAY -> "Kam"
+                            Calendar.FRIDAY -> "Jum"
+                            Calendar.SATURDAY -> "Sab"
+                            else -> ""
+                        }
+                        val dateStr = WibDateUtils.format("dd/MM", cal.time)
+                        val isToday = i == 6
+                        Pair(if (isToday) "Hari Ini" else dayName, dateStr)
+                    }
+                }
+
+                weeklyLabels.forEach { (dayName, dateStr) ->
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text(
+                            text = dayName,
+                            fontSize = 9.sp,
+                            color = if (dayName == "Hari Ini") BrandGreen else SlateGrey,
+                            fontWeight = FontWeight.Bold
+                        )
+                        Text(
+                            text = dateStr,
+                            fontSize = 8.sp,
+                            color = Color.Gray,
+                            fontWeight = FontWeight.Normal
+                        )
+                    }
+                }
+            }
+            2 -> {
+                // Sebulan: 4 minggu kebelakang (Rata-rata per minggu)
+                monthlyWeekIntervals.forEachIndexed { idx, week ->
+                    val isCurrentWeek = idx == 3
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text(
+                            text = week.shortTitle,
+                            fontSize = 9.sp,
+                            color = if (isCurrentWeek) BrandGreen else SlateGrey,
+                            fontWeight = FontWeight.Bold
+                        )
+                        Text(
+                            text = week.dateRangeStr,
+                            fontSize = 7.5.sp,
+                            color = Color.Gray,
+                            fontWeight = FontWeight.Normal
+                        )
+                        Text(
+                            text = "Rata-rata",
+                            fontSize = 7.sp,
+                            color = if (isCurrentWeek) BrandGreen.copy(alpha = 0.85f) else Color.LightGray,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                    }
+                }
+            }
+            else -> {
+                // Tanggal Kustom
+                if (customUnitLogs.isNotEmpty()) {
+                    if (customUnitLogs.size == 1) {
+                        Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+                            Text(
+                                text = "Pengukuran: ${WibDateUtils.format("dd/MM/yyyy HH:mm", customUnitLogs[0].timestamp)} WIB",
+                                fontSize = 9.sp,
+                                color = SlateGrey,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                    } else {
+                        customUnitLogs.forEachIndexed { idx, log ->
+                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                Text(
+                                    text = "#${idx + 1}",
+                                    fontSize = 8.5.sp,
+                                    color = SlateGrey,
+                                    fontWeight = FontWeight.Bold
+                                )
+                                Text(
+                                    text = WibDateUtils.format("dd/MM", log.timestamp),
+                                    fontSize = 8.sp,
+                                    color = Color.Gray
+                                )
+                                Text(
+                                    text = WibDateUtils.format("HH:mm", log.timestamp),
+                                    fontSize = 7.5.sp,
+                                    color = Color.LightGray
+                                )
+                            }
+                        }
+                    }
+                } else {
+                    Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+                        Text(
+                            text = "Periode: ${WibDateUtils.format("dd/MM/yy", customStartDate)} - ${WibDateUtils.format("dd/MM/yy", customEndDate)} (Tidak ada data)",
+                            fontSize = 9.sp,
+                            color = Color.Gray
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun TrendChartLegend(trendTabSelection: Int) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(top = 8.dp),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        when (trendTabSelection) {
+            0 -> {
+                Text("Garis: Axial 1 / DE (Hijau), Axial 2 / NDE (Abu-Abu)", fontSize = 8.sp, color = Color.DarkGray)
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Box(modifier = Modifier.size(8.dp).background(BrandYellow).clip(CircleShape))
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text("Warning (4.5)", fontSize = 8.sp, color = Color.Black)
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Box(modifier = Modifier.size(8.dp).background(BrandRed).clip(CircleShape))
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text("Trip Critical (8.8)", fontSize = 8.sp, color = Color.Black)
+                }
+            }
+            1 -> {
+                Text("Garis: Suhu Bearing (Oranye/Tebal)", fontSize = 8.sp, color = Color.DarkGray)
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Box(modifier = Modifier.size(8.dp).background(BrandYellow).clip(CircleShape))
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text("Warning (65°C)", fontSize = 8.sp, color = Color.Black)
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Box(modifier = Modifier.size(8.dp).background(BrandRed).clip(CircleShape))
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text("Trip Critical (75°C)", fontSize = 8.sp, color = Color.Black)
+                }
+            }
+            else -> {
+                Text("Garis: Pelumasan Greasing (Hijau = OK, Merah = Belum)", fontSize = 8.sp, color = Color.DarkGray)
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Box(modifier = Modifier.size(8.dp).background(BrandGreen).clip(CircleShape))
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text("Standar (100%)", fontSize = 8.sp, color = Color.Black)
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Box(modifier = Modifier.size(8.dp).background(BrandRed).clip(CircleShape))
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text("Perlu Greasing (0%)", fontSize = 8.sp, color = Color.Black)
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun EnlargedChartModalDialog(
+    selectedUnit: CentrifugeUnitState,
+    initialTrendTab: Int,
+    timeRangeSelection: Int,
+    customStartDate: Long,
+    customEndDate: Long,
+    devVibPoints: List<Float>,
+    ndevVibPoints: List<Float>,
+    bearingTempPoints: List<Float>,
+    greasingPoints: List<Float>,
+    todayUnitLogs: List<VibrationLog>,
+    monthlyWeekIntervals: List<MonthlyWeekInterval>,
+    customUnitLogs: List<VibrationLog>,
+    onDismiss: () -> Unit
+) {
+    var dialogTrendTab by remember { mutableStateOf(initialTrendTab) }
+    var dialogZoomScale by remember { mutableStateOf(1f) }
+    var dialogPanX by remember { mutableStateOf(0f) }
+    var dialogPanY by remember { mutableStateOf(0f) }
+
+    val historyPoints = when (dialogTrendTab) {
+        0 -> devVibPoints
+        1 -> bearingTempPoints
+        else -> greasingPoints
+    }
+
+    val hasCriticalValue = when (dialogTrendTab) {
+        0 -> devVibPoints.any { it >= selectedUnit.criticalVib } || ndevVibPoints.any { it >= selectedUnit.criticalVib }
+        1 -> bearingTempPoints.any { it >= selectedUnit.criticalTemp }
+        else -> greasingPoints.any { it < 50f }
+    }
+
+    Dialog(
+        onDismissRequest = onDismiss,
+        properties = DialogProperties(usePlatformDefaultWidth = false)
+    ) {
+        Card(
+            modifier = Modifier
+                .fillMaxWidth(0.96f)
+                .fillMaxHeight(0.92f),
+            shape = RoundedCornerShape(20.dp),
+            colors = CardDefaults.cardColors(containerColor = Color.White),
+            elevation = CardDefaults.cardElevation(defaultElevation = 10.dp)
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(16.dp)
+            ) {
+                // Header
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Box(
+                                modifier = Modifier
+                                    .size(32.dp)
+                                    .background(BrandGreenLight, CircleShape),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Analytics,
+                                    contentDescription = null,
+                                    tint = BrandGreen,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                            }
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(
+                                text = "Grafik Tren ${selectedUnit.id} - ${selectedUnit.name}",
+                                fontSize = 15.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = SlateGrey
+                            )
+                        }
+                        Spacer(modifier = Modifier.height(2.dp))
+                        Text(
+                            text = (if (selectedUnit.isRunning) "Mesin Beroperasi" else "Standby Mode") + " • " + when (timeRangeSelection) {
+                                0 -> "Periode Hari Ini"
+                                1 -> "Periode Seminggu (7 Hari)"
+                                2 -> "Periode Sebulan (Per Minggu)"
+                                else -> "Periode ${WibDateUtils.format("dd/MM/yy", customStartDate)} - ${WibDateUtils.format("dd/MM/yy", customEndDate)}"
+                            },
+                            fontSize = 11.sp,
+                            color = Color.DarkGray
+                        )
+                    }
+
+                    IconButton(
+                        onClick = onDismiss,
+                        modifier = Modifier
+                            .background(Color(0xFFF1F5F9), CircleShape)
+                            .size(36.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Close,
+                            contentDescription = "Tutup",
+                            tint = Color.DarkGray,
+                            modifier = Modifier.size(18.dp)
+                        )
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(10.dp))
+
+                // Tabs for Trend Selection
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    listOf("Tren Vibrasi (mm/s)", "Tren Temperatur (°C)", "Tren Greasing (%)").forEachIndexed { index, label ->
+                        val isTabSelected = dialogTrendTab == index
+                        Box(
+                            modifier = Modifier
+                                .weight(1f)
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(if (isTabSelected) BrandGreen else Color(0xFFF1F5F9))
+                                .clickable {
+                                    dialogTrendTab = index
+                                    dialogZoomScale = 1f
+                                    dialogPanX = 0f
+                                    dialogPanY = 0f
+                                }
+                                .padding(vertical = 8.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = label,
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = if (isTabSelected) Color.White else SlateGrey,
+                                textAlign = TextAlign.Center
+                            )
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(8.dp))
+
+                // Zoom Control Toolbar inside Dialog
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(Color(0xFFF8FAFC), RoundedCornerShape(8.dp))
+                        .padding(horizontal = 10.dp, vertical = 6.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        Text(
+                            text = "Zoom: ${(dialogZoomScale * 100).toInt()}%",
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = if (dialogZoomScale > 1f) BrandGreen else SlateGrey
+                        )
+                        if (dialogZoomScale > 1f) {
+                            Surface(
+                                onClick = {
+                                    dialogZoomScale = 1f
+                                    dialogPanX = 0f
+                                    dialogPanY = 0f
+                                },
+                                shape = RoundedCornerShape(4.dp),
+                                color = BrandGreenLight,
+                                border = BorderStroke(1.dp, BrandGreen)
+                            ) {
+                                Text(
+                                    text = "Reset (100%)",
+                                    fontSize = 9.5.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = BrandGreen,
+                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                )
+                            }
+                        }
+                    }
+
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        // Zoom Out
+                        FilledTonalIconButton(
+                            onClick = {
+                                val s = (dialogZoomScale - 0.25f).coerceAtLeast(1f)
+                                dialogZoomScale = s
+                                if (s <= 1f) {
+                                    dialogPanX = 0f
+                                    dialogPanY = 0f
+                                }
+                            },
+                            enabled = dialogZoomScale > 1f,
+                            modifier = Modifier.size(32.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.ZoomOut,
+                                contentDescription = "Zoom Out",
+                                modifier = Modifier.size(16.dp)
+                            )
+                        }
+
+                        // Zoom In
+                        FilledTonalIconButton(
+                            onClick = {
+                                dialogZoomScale = (dialogZoomScale + 0.25f).coerceAtMost(4f)
+                            },
+                            enabled = dialogZoomScale < 4f,
+                            modifier = Modifier.size(32.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.ZoomIn,
+                                contentDescription = "Zoom In",
+                                modifier = Modifier.size(16.dp)
+                            )
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(8.dp))
+
+                // Spacious Canvas Area with zoom/pan support
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .weight(1f)
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(if (hasCriticalValue) Color(0xFFFFF5F5) else Color(0xFFFAFAFA))
+                        .border(
+                            width = if (hasCriticalValue) 1.5.dp else 1.dp,
+                            color = if (hasCriticalValue) BrandRed.copy(alpha = 0.7f) else Color(0xFFE2E8F0),
+                            shape = RoundedCornerShape(12.dp)
+                        )
+                        .pointerInput(Unit) {
+                            detectTransformGestures { _, pan, zoom, _ ->
+                                val newScale = (dialogZoomScale * zoom).coerceIn(1f, 4f)
+                                dialogZoomScale = newScale
+                                if (newScale > 1f) {
+                                    val maxPanX = (size.width * (newScale - 1f)) / 2f
+                                    val maxPanY = (size.height * (newScale - 1f)) / 2f
+                                    dialogPanX = (dialogPanX + pan.x).coerceIn(-maxPanX, maxPanX)
+                                    dialogPanY = (dialogPanY + pan.y).coerceIn(-maxPanY, maxPanY)
+                                } else {
+                                    dialogPanX = 0f
+                                    dialogPanY = 0f
+                                }
+                            }
+                        }
+                        .padding(14.dp)
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .graphicsLayer {
+                                scaleX = dialogZoomScale
+                                scaleY = dialogZoomScale
+                                translationX = dialogPanX
+                                translationY = dialogPanY
+                            }
+                    ) {
+                        CentrifugeTrendCanvas(
+                            modifier = Modifier.fillMaxSize(),
+                            trendTabSelection = dialogTrendTab,
+                            historyPoints = historyPoints,
+                            devVibPoints = devVibPoints,
+                            ndevVibPoints = ndevVibPoints,
+                            bearingTempPoints = bearingTempPoints,
+                            greasingPoints = greasingPoints,
+                            selectedUnit = selectedUnit,
+                            timeRangeSelection = timeRangeSelection,
+                            isEnlarged = true
+                        )
+                    }
+
+                    if (hasCriticalValue) {
+                        Box(
+                            modifier = Modifier
+                                .align(Alignment.TopEnd)
+                                .background(BrandRed, RoundedCornerShape(6.dp))
+                                .padding(horizontal = 8.dp, vertical = 3.dp)
+                        ) {
+                            Text("KRITIKAL", color = Color.White, fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(6.dp))
+
+                // X-Axis Labels
+                TrendChartXAxisLabels(
+                    timeRangeSelection = timeRangeSelection,
+                    todayUnitLogs = todayUnitLogs,
+                    monthlyWeekIntervals = monthlyWeekIntervals,
+                    customUnitLogs = customUnitLogs,
+                    customStartDate = customStartDate,
+                    customEndDate = customEndDate
+                )
+
+                // Legend
+                TrendChartLegend(trendTabSelection = dialogTrendTab)
+
+                Spacer(modifier = Modifier.height(10.dp))
+
+                // Statistics Summary Row
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    when (dialogTrendTab) {
+                        0 -> {
+                            val maxDe = if (devVibPoints.isNotEmpty()) devVibPoints.maxOrNull() ?: 0f else 0f
+                            val avgDe = if (devVibPoints.isNotEmpty()) devVibPoints.average().toFloat() else 0f
+                            val maxNde = if (ndevVibPoints.isNotEmpty()) ndevVibPoints.maxOrNull() ?: 0f else 0f
+                            val avgNde = if (ndevVibPoints.isNotEmpty()) ndevVibPoints.average().toFloat() else 0f
+
+                            Card(
+                                modifier = Modifier.weight(1f),
+                                colors = CardDefaults.cardColors(containerColor = SoftBg),
+                                shape = RoundedCornerShape(8.dp)
+                            ) {
+                                Column(modifier = Modifier.padding(8.dp)) {
+                                    Text("Axial 1 (DE)", fontSize = 9.5.sp, fontWeight = FontWeight.Bold, color = BrandGreen)
+                                    Text("Max: ${String.format(Locale.US, "%.1f", maxDe)} mm/s", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = SlateGrey)
+                                    Text("Rata: ${String.format(Locale.US, "%.1f", avgDe)} mm/s", fontSize = 10.sp, color = Color.DarkGray)
+                                }
+                            }
+                            Card(
+                                modifier = Modifier.weight(1f),
+                                colors = CardDefaults.cardColors(containerColor = SoftBg),
+                                shape = RoundedCornerShape(8.dp)
+                            ) {
+                                Column(modifier = Modifier.padding(8.dp)) {
+                                    Text("Axial 2 (NDE)", fontSize = 9.5.sp, fontWeight = FontWeight.Bold, color = SlateGrey)
+                                    Text("Max: ${String.format(Locale.US, "%.1f", maxNde)} mm/s", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = SlateGrey)
+                                    Text("Rata: ${String.format(Locale.US, "%.1f", avgNde)} mm/s", fontSize = 10.sp, color = Color.DarkGray)
+                                }
+                            }
+                            Card(
+                                modifier = Modifier.weight(1f),
+                                colors = CardDefaults.cardColors(containerColor = if (hasCriticalValue) Color(0xFFFFEBEE) else Color(0xFFE8F5E9)),
+                                shape = RoundedCornerShape(8.dp)
+                            ) {
+                                Column(modifier = Modifier.padding(8.dp)) {
+                                    Text("Status Vibrasi", fontSize = 9.5.sp, fontWeight = FontWeight.Bold, color = if (hasCriticalValue) BrandRed else BrandGreen)
+                                    Text(if (hasCriticalValue) "KRITIKAL" else if (maxDe >= selectedUnit.warningVib) "WARNING" else "NORMAL", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = if (hasCriticalValue) BrandRed else if (maxDe >= selectedUnit.warningVib) BrandOrange else BrandGreen)
+                                    Text("Trip: ${selectedUnit.criticalVib} mm/s", fontSize = 9.5.sp, color = Color.DarkGray)
+                                }
+                            }
+                        }
+                        1 -> {
+                            val maxTemp = if (bearingTempPoints.isNotEmpty()) bearingTempPoints.maxOrNull() ?: 0f else 0f
+                            val minTemp = if (bearingTempPoints.isNotEmpty()) bearingTempPoints.minOrNull() ?: 0f else 0f
+                            val avgTemp = if (bearingTempPoints.isNotEmpty()) bearingTempPoints.average().toFloat() else 0f
+
+                            Card(
+                                modifier = Modifier.weight(1f),
+                                colors = CardDefaults.cardColors(containerColor = SoftBg),
+                                shape = RoundedCornerShape(8.dp)
+                            ) {
+                                Column(modifier = Modifier.padding(8.dp)) {
+                                    Text("Suhu Bearing", fontSize = 9.5.sp, fontWeight = FontWeight.Bold, color = BrandOrange)
+                                    Text("Max: ${String.format(Locale.US, "%.1f", maxTemp)}°C", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = SlateGrey)
+                                    Text("Min: ${String.format(Locale.US, "%.1f", minTemp)}°C", fontSize = 10.sp, color = Color.DarkGray)
+                                }
+                            }
+                            Card(
+                                modifier = Modifier.weight(1f),
+                                colors = CardDefaults.cardColors(containerColor = SoftBg),
+                                shape = RoundedCornerShape(8.dp)
+                            ) {
+                                Column(modifier = Modifier.padding(8.dp)) {
+                                    Text("Rata-Rata Suhu", fontSize = 9.5.sp, fontWeight = FontWeight.Bold, color = SlateGrey)
+                                    Text("${String.format(Locale.US, "%.1f", avgTemp)}°C", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = SlateGrey)
+                                    Text("Warning: ${selectedUnit.warningTemp}°C", fontSize = 9.5.sp, color = Color.DarkGray)
+                                }
+                            }
+                            Card(
+                                modifier = Modifier.weight(1f),
+                                colors = CardDefaults.cardColors(containerColor = if (hasCriticalValue) Color(0xFFFFEBEE) else Color(0xFFE8F5E9)),
+                                shape = RoundedCornerShape(8.dp)
+                            ) {
+                                Column(modifier = Modifier.padding(8.dp)) {
+                                    Text("Status Suhu", fontSize = 9.5.sp, fontWeight = FontWeight.Bold, color = if (hasCriticalValue) BrandRed else BrandGreen)
+                                    Text(if (hasCriticalValue) "KRITIKAL" else if (maxTemp >= selectedUnit.warningTemp) "WARNING" else "NORMAL", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = if (hasCriticalValue) BrandRed else if (maxTemp >= selectedUnit.warningTemp) BrandOrange else BrandGreen)
+                                    Text("Trip: ${selectedUnit.criticalTemp}°C", fontSize = 9.5.sp, color = Color.DarkGray)
+                                }
+                            }
+                        }
+                        else -> {
+                            val okCount = greasingPoints.count { it >= 50f }
+                            val totalCount = greasingPoints.size
+                            val pct = if (totalCount > 0) (okCount.toFloat() / totalCount * 100).toInt() else 100
+
+                            Card(
+                                modifier = Modifier.weight(1f),
+                                colors = CardDefaults.cardColors(containerColor = SoftBg),
+                                shape = RoundedCornerShape(8.dp)
+                            ) {
+                                Column(modifier = Modifier.padding(8.dp)) {
+                                    Text("Pelumasan", fontSize = 9.5.sp, fontWeight = FontWeight.Bold, color = BrandGreen)
+                                    Text("$okCount / $totalCount Terlumasi", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = SlateGrey)
+                                    Text("Standar: 100%", fontSize = 9.5.sp, color = Color.DarkGray)
+                                }
+                            }
+                            Card(
+                                modifier = Modifier.weight(1f),
+                                colors = CardDefaults.cardColors(containerColor = SoftBg),
+                                shape = RoundedCornerShape(8.dp)
+                            ) {
+                                Column(modifier = Modifier.padding(8.dp)) {
+                                    Text("Rasio Pemenuhan", fontSize = 9.5.sp, fontWeight = FontWeight.Bold, color = SlateGrey)
+                                    Text("$pct%", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = if (pct >= 50) BrandGreen else BrandRed)
+                                    Text("Target: 100%", fontSize = 9.5.sp, color = Color.DarkGray)
+                                }
+                            }
+                            Card(
+                                modifier = Modifier.weight(1f),
+                                colors = CardDefaults.cardColors(containerColor = if (pct >= 50) Color(0xFFE8F5E9) else Color(0xFFFFEBEE)),
+                                shape = RoundedCornerShape(8.dp)
+                            ) {
+                                Column(modifier = Modifier.padding(8.dp)) {
+                                    Text("Status Greasing", fontSize = 9.5.sp, fontWeight = FontWeight.Bold, color = if (pct >= 50) BrandGreen else BrandRed)
+                                    Text(if (pct >= 50) "TERPENUHI" else "PERLU GREASING", fontSize = 10.5.sp, fontWeight = FontWeight.Bold, color = if (pct >= 50) BrandGreen else BrandRed)
+                                    Text("Batas: 50%", fontSize = 9.5.sp, color = Color.DarkGray)
+                                }
+                            }
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(10.dp))
+
+                // Close Button
+                Button(
+                    onClick = onDismiss,
+                    modifier = Modifier.fillMaxWidth().height(42.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = BrandGreen),
+                    shape = RoundedCornerShape(10.dp)
+                ) {
+                    Text("Tutup Tampilan Grafik Penuh", fontSize = 12.5.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                }
+            }
+        }
+    }
+}
+
+@Composable
 fun DashboardScreen(
     vibrationLogs: List<VibrationLog>,
     abnormalityReports: List<AbnormalityReport>,
@@ -1011,6 +2142,18 @@ fun DashboardScreen(
     val todayEndMillis = remember { todayStartMillis + 24 * 60 * 60 * 1000L - 1L }
     var customStartDate by remember { mutableStateOf(todayStartMillis) }
     var customEndDate by remember { mutableStateOf(todayEndMillis) }
+
+    var isChartExpandedHeight by remember { mutableStateOf(false) }
+    var showEnlargedChartDialog by remember { mutableStateOf(false) }
+    var chartZoomScale by remember { mutableStateOf(1f) }
+    var chartPanX by remember { mutableStateOf(0f) }
+    var chartPanY by remember { mutableStateOf(0f) }
+
+    LaunchedEffect(selectedUnitIndex, timeRangeSelection, trendTabSelection) {
+        chartZoomScale = 1f
+        chartPanX = 0f
+        chartPanY = 0f
+    }
 
     fun pickStartDate() {
         val cal = WibDateUtils.getCalendar(customStartDate)
@@ -1571,7 +2714,6 @@ fun DashboardScreen(
                                     (reportValues.nde ?: 0f) > 4.0f ||
                                     (reportValues.motorVib ?: 0f) > 4.0f ||
                                     (reportValues.gearboxVib ?: 0f) > 4.0f ||
-                                    (reportValues.bowlVib ?: 0f) > 4.0f ||
                                     (reportValues.bearingTemp ?: 0f) > 80.0f ||
                                     (reportValues.motorTemp ?: 0f) > 80.0f
                                 )
@@ -1608,11 +2750,10 @@ fun DashboardScreen(
                             )
                             Spacer(modifier = Modifier.height(6.dp))
 
-                            ReportRowItem("1", "Drive End", reportValues.dev, "mm/s", 4.0f)
-                            ReportRowItem("2", "Non Drive End", reportValues.nde, "mm/s", 4.0f)
-                            ReportRowItem("3", "Bearing Motor", reportValues.motorVib, "mm/s", 4.0f)
-                            ReportRowItem("4", "Bearing Gearbox", reportValues.gearboxVib, "mm/s", 4.0f)
-                            ReportRowItem("5", "Bowl", reportValues.bowlVib, "mm/s", 4.0f)
+                            ReportRowItem("1", "Axial 1", reportValues.dev, "mm/s", 4.0f, infoText = "Titik ukur pada Bearing dekat dengan pulley")
+                            ReportRowItem("2", "Axial 2", reportValues.nde, "mm/s", 4.0f, infoText = "Titik ukur pada Bearing dengan dengan gland packing")
+                            ReportRowItem("3", "Horizontal", reportValues.motorVib, "mm/s", 4.0f, infoText = "Titik ukur pada Body mesin sejajar dengan titik Axial 1")
+                            ReportRowItem("4", "Vertikal", reportValues.gearboxVib, "mm/s", 4.0f, infoText = "Titik ukur pada body mesin bagian atas tegak lurus dari titik Axial")
 
                             Spacer(modifier = Modifier.height(10.dp))
                             Divider(color = Color(0xFFF1F5F9), thickness = 1.dp)
@@ -1868,7 +3009,143 @@ fun DashboardScreen(
                         }
                     }
 
-                    Spacer(modifier = Modifier.height(12.dp))
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    // Zoom & Enlarge Controls Toolbar
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 4.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        // Zoom in/out and reset badges
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(4.dp)
+                        ) {
+                            FilledTonalIconButton(
+                                onClick = {
+                                    val s = (chartZoomScale - 0.25f).coerceAtLeast(1f)
+                                    chartZoomScale = s
+                                    if (s <= 1f) {
+                                        chartPanX = 0f
+                                        chartPanY = 0f
+                                    }
+                                },
+                                enabled = chartZoomScale > 1f,
+                                modifier = Modifier.size(30.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.ZoomOut,
+                                    contentDescription = "Perkecil (Zoom Out)",
+                                    modifier = Modifier.size(15.dp)
+                                )
+                            }
+
+                            Surface(
+                                onClick = {
+                                    chartZoomScale = 1f
+                                    chartPanX = 0f
+                                    chartPanY = 0f
+                                },
+                                shape = RoundedCornerShape(6.dp),
+                                color = if (chartZoomScale > 1f) BrandGreenLight else Color(0xFFF1F5F9),
+                                border = BorderStroke(1.dp, if (chartZoomScale > 1f) BrandGreen else Color(0xFFE2E8F0))
+                            ) {
+                                Text(
+                                    text = if (chartZoomScale > 1f) "${(chartZoomScale * 100).toInt()}% (Reset)" else "100%",
+                                    fontSize = 10.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = if (chartZoomScale > 1f) BrandGreen else SlateGrey,
+                                    modifier = Modifier.padding(horizontal = 7.dp, vertical = 5.dp)
+                                )
+                            }
+
+                            FilledTonalIconButton(
+                                onClick = {
+                                    chartZoomScale = (chartZoomScale + 0.25f).coerceAtMost(3.5f)
+                                },
+                                enabled = chartZoomScale < 3.5f,
+                                modifier = Modifier.size(30.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.ZoomIn,
+                                    contentDescription = "Perbesar (Zoom In)",
+                                    modifier = Modifier.size(15.dp)
+                                )
+                            }
+
+                            if (chartZoomScale > 1f) {
+                                Text(
+                                    text = "Geser grafik",
+                                    fontSize = 9.sp,
+                                    color = Color.Gray,
+                                    fontStyle = androidx.compose.ui.text.font.FontStyle.Italic
+                                )
+                            }
+                        }
+
+                        // Right actions: Expand height & Fullscreen Modal
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            Surface(
+                                onClick = { isChartExpandedHeight = !isChartExpandedHeight },
+                                shape = RoundedCornerShape(6.dp),
+                                color = if (isChartExpandedHeight) BrandGreenLight else Color(0xFFF8FAFC),
+                                border = BorderStroke(1.dp, if (isChartExpandedHeight) BrandGreen else Color(0xFFCBD5E1))
+                            ) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    modifier = Modifier.padding(horizontal = 7.dp, vertical = 5.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = if (isChartExpandedHeight) Icons.Default.UnfoldLess else Icons.Default.UnfoldMore,
+                                        contentDescription = null,
+                                        tint = if (isChartExpandedHeight) BrandGreen else SlateGrey,
+                                        modifier = Modifier.size(13.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(3.dp))
+                                    Text(
+                                        text = if (isChartExpandedHeight) "Tinggi: 250dp" else "Perluas",
+                                        fontSize = 10.sp,
+                                        fontWeight = FontWeight.SemiBold,
+                                        color = if (isChartExpandedHeight) BrandGreen else SlateGrey
+                                    )
+                                }
+                            }
+
+                            Surface(
+                                onClick = { showEnlargedChartDialog = true },
+                                shape = RoundedCornerShape(6.dp),
+                                color = BrandGreen,
+                                shadowElevation = 1.dp
+                            ) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 5.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.OpenInFull,
+                                        contentDescription = "Layar Penuh",
+                                        tint = Color.White,
+                                        modifier = Modifier.size(12.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Text(
+                                        text = "Perbesar",
+                                        fontSize = 10.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = Color.White
+                                    )
+                                }
+                            }
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(4.dp))
 
                     // Trend Line Canvas Chart
                     val historyPoints = when (trendTabSelection) {
@@ -1886,7 +3163,7 @@ fun DashboardScreen(
                         Box(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .height(150.dp)
+                                .height(if (isChartExpandedHeight) 250.dp else 150.dp)
                                 .clip(RoundedCornerShape(16.dp))
                                 .background(if (hasCriticalValue) Color(0xFFFFF5F5) else Color(0xFFFAFAFA))
                                 .border(
@@ -1894,357 +3171,45 @@ fun DashboardScreen(
                                     color = if (hasCriticalValue) BrandRed.copy(alpha = 0.7f) else Color(0xFFF1F5F9),
                                     shape = RoundedCornerShape(16.dp)
                                 )
+                                .pointerInput(Unit) {
+                                    detectTransformGestures { _, pan, zoom, _ ->
+                                        val newScale = (chartZoomScale * zoom).coerceIn(1f, 3.5f)
+                                        chartZoomScale = newScale
+                                        if (newScale > 1f) {
+                                            val maxPanX = (size.width * (newScale - 1f)) / 2f
+                                            val maxPanY = (size.height * (newScale - 1f)) / 2f
+                                            chartPanX = (chartPanX + pan.x).coerceIn(-maxPanX, maxPanX)
+                                            chartPanY = (chartPanY + pan.y).coerceIn(-maxPanY, maxPanY)
+                                        } else {
+                                            chartPanX = 0f
+                                            chartPanY = 0f
+                                        }
+                                    }
+                                }
                                 .padding(horizontal = 14.dp, vertical = 10.dp)
                         ) {
-                            Canvas(modifier = Modifier.fillMaxSize()) {
-                                val width = size.width
-                                val height = size.height
-                                val points = historyPoints.size
-                                val spacing = if (points > 1) width / (points - 1) else 0f
-                                val getX: (Int) -> Float = { idx ->
-                                    if (points <= 1) width / 2f else idx * spacing
-                                }
-
-                                if (trendTabSelection == 0) {
-                                    // Vibration Chart (Max 10 mm/s)
-                                    val maxScale = 10f
-                                    val warningY = height - (selectedUnit.warningVib / maxScale) * height
-                                    val criticalY = height - (selectedUnit.criticalVib / maxScale) * height
-
-                                    // Warning threshold limit line
-                                    drawLine(
-                                        color = BrandYellow.copy(alpha = 0.6f),
-                                        start = Offset(0f, warningY),
-                                        end = Offset(width, warningY),
-                                        strokeWidth = 2f
-                                    )
-                                    // Critical threshold limit line (Merah)
-                                    drawLine(
-                                        color = BrandRed.copy(alpha = 0.75f),
-                                        start = Offset(0f, criticalY),
-                                        end = Offset(width, criticalY),
-                                        strokeWidth = 3f
-                                    )
-
-                                    // Plot DE Vibration Line Segments with dynamic Critical Red coloring
-                                    for (index in 1 until devVibPoints.size) {
-                                        val prevVib = devVibPoints[index - 1]
-                                        val currVib = devVibPoints[index]
-                                        val prevX = getX(index - 1)
-                                        val prevY = (height - (prevVib / maxScale).coerceIn(0f, 1f) * height).coerceIn(16f, height - 16f)
-                                        val currX = getX(index)
-                                        val currY = (height - (currVib / maxScale).coerceIn(0f, 1f) * height).coerceIn(16f, height - 16f)
-
-                                        val isSegCritical = currVib >= selectedUnit.criticalVib || prevVib >= selectedUnit.criticalVib
-                                        val isSegWarning = currVib >= selectedUnit.warningVib || prevVib >= selectedUnit.warningVib
-                                        val segColor = if (isSegCritical) BrandRed else if (isSegWarning) BrandOrange else BrandGreen
-                                        val strokeW = if (isSegCritical) 5.5f else 4f
-
-                                        drawLine(
-                                            color = segColor,
-                                            start = Offset(prevX, prevY),
-                                            end = Offset(currX, currY),
-                                            strokeWidth = strokeW,
-                                            cap = StrokeCap.Round
-                                        )
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .graphicsLayer {
+                                        scaleX = chartZoomScale
+                                        scaleY = chartZoomScale
+                                        translationX = chartPanX
+                                        translationY = chartPanY
                                     }
-
-                                    // Plot DE Vibration Dots
-                                    devVibPoints.forEachIndexed { index, valVib ->
-                                        val x = getX(index)
-                                        val y = (height - (valVib / maxScale).coerceIn(0f, 1f) * height).coerceIn(16f, height - 16f)
-                                        val isCritical = valVib >= selectedUnit.criticalVib
-                                        val isWarning = valVib >= selectedUnit.warningVib
-                                        val dotColor = if (isCritical) BrandRed else if (isWarning) BrandOrange else BrandGreen
-                                        val dotRadius = if (isCritical) 6.5f else 4.5f
-
-                                        if (isCritical) {
-                                            drawCircle(
-                                                color = BrandRed.copy(alpha = 0.35f),
-                                                radius = 11f,
-                                                center = Offset(x, y)
-                                            )
-                                        }
-                                        drawCircle(
-                                            color = dotColor,
-                                            radius = dotRadius,
-                                            center = Offset(x, y)
-                                        )
-                                    }
-
-                                    // Plot NDE Vibration Line Segments
-                                    for (index in 1 until ndevVibPoints.size) {
-                                        val prevVib = ndevVibPoints[index - 1]
-                                        val currVib = ndevVibPoints[index]
-                                        val prevX = getX(index - 1)
-                                        val prevY = (height - (prevVib / maxScale).coerceIn(0f, 1f) * height).coerceIn(16f, height - 16f)
-                                        val currX = getX(index)
-                                        val currY = (height - (currVib / maxScale).coerceIn(0f, 1f) * height).coerceIn(16f, height - 16f)
-
-                                        val isCritical = currVib >= selectedUnit.criticalVib || prevVib >= selectedUnit.criticalVib
-                                        val segColor = if (isCritical) BrandRed.copy(alpha = 0.85f) else Color.Gray.copy(alpha = 0.5f)
-                                        val strokeW = if (isCritical) 3.5f else 2.5f
-
-                                        drawLine(
-                                            color = segColor,
-                                            start = Offset(prevX, prevY),
-                                            end = Offset(currX, currY),
-                                            strokeWidth = strokeW,
-                                            cap = StrokeCap.Round
-                                        )
-                                    }
-
-                                    // Draw Vibration measurement numbers along the line with red color for critical
-                                    drawIntoCanvas { canvas ->
-                                        val paintCritical = Paint().apply {
-                                            color = android.graphics.Color.rgb(186, 26, 26) // BrandRed
-                                             textSize = 25f
-                                            typeface = Typeface.DEFAULT_BOLD
-                                            textAlign = Paint.Align.CENTER
-                                            isAntiAlias = true
-                                        }
-                                        val paintWarning = Paint().apply {
-                                            color = android.graphics.Color.rgb(245, 124, 0) // BrandOrange
-                                            textSize = 24f
-                                            typeface = Typeface.DEFAULT_BOLD
-                                            textAlign = Paint.Align.CENTER
-                                            isAntiAlias = true
-                                        }
-                                        val paintDe = Paint().apply {
-                                            color = android.graphics.Color.rgb(0, 106, 106) // BrandGreen
-                                            textSize = 24f
-                                            typeface = Typeface.DEFAULT_BOLD
-                                            textAlign = Paint.Align.CENTER
-                                            isAntiAlias = true
-                                        }
-                                        val paintNde = Paint().apply {
-                                            color = android.graphics.Color.rgb(100, 116, 139) // SlateGrey
-                                            textSize = 20f
-                                            typeface = Typeface.DEFAULT
-                                            textAlign = Paint.Align.CENTER
-                                            isAntiAlias = true
-                                        }
-
-                                        devVibPoints.forEachIndexed { index, valVib ->
-                                            val x = getX(index)
-                                            val yDe = (height - (valVib / maxScale).coerceIn(0f, 1f) * height).coerceIn(16f, height - 16f)
-                                            val labelDe = String.format(Locale.US, "%.1f", valVib)
-                                            val p = if (valVib >= selectedUnit.criticalVib) paintCritical else if (valVib >= selectedUnit.warningVib) paintWarning else paintDe
-                                            canvas.nativeCanvas.drawText(labelDe, x, (yDe - 10f).coerceAtLeast(20f), p)
-                                        }
-
-                                        ndevVibPoints.forEachIndexed { index, valNde ->
-                                            val x = getX(index)
-                                            val yNde = (height - (valNde / maxScale).coerceIn(0f, 1f) * height).coerceIn(16f, height - 16f)
-                                            val labelNde = String.format(Locale.US, "%.1f", valNde)
-                                            val p = if (valNde >= selectedUnit.criticalVib) paintCritical else paintNde
-                                            canvas.nativeCanvas.drawText(labelNde, x, (yNde + 22f).coerceAtMost(height - 4f), p)
-                                        }
-                                    }
-                                } else if (trendTabSelection == 1) {
-                                    // Temperature Chart (Max 100 °C)
-                                    val maxScale = 100f
-                                    val warningY = height - (selectedUnit.warningTemp / maxScale) * height
-                                    val criticalY = height - (selectedUnit.criticalTemp / maxScale) * height
-
-                                    // Warning Temp threshold line
-                                    drawLine(
-                                        color = BrandYellow.copy(alpha = 0.6f),
-                                        start = Offset(0f, warningY),
-                                        end = Offset(width, warningY),
-                                        strokeWidth = 2f
-                                    )
-                                    // Critical Temp threshold line (Merah)
-                                    drawLine(
-                                        color = BrandRed.copy(alpha = 0.75f),
-                                        start = Offset(0f, criticalY),
-                                        end = Offset(width, criticalY),
-                                        strokeWidth = 3f
-                                    )
-
-                                    // Plot Bearing Temp Line Segments with dynamic Critical Red coloring
-                                    for (index in 1 until bearingTempPoints.size) {
-                                        val prevTemp = bearingTempPoints[index - 1]
-                                        val currTemp = bearingTempPoints[index]
-                                        val prevX = getX(index - 1)
-                                        val prevY = (height - (prevTemp / maxScale).coerceIn(0f, 1f) * height).coerceIn(16f, height - 16f)
-                                        val currX = getX(index)
-                                        val currY = (height - (currTemp / maxScale).coerceIn(0f, 1f) * height).coerceIn(16f, height - 16f)
-
-                                        val isSegCritical = currTemp >= selectedUnit.criticalTemp || prevTemp >= selectedUnit.criticalTemp
-                                        val isSegWarning = currTemp >= selectedUnit.warningTemp || prevTemp >= selectedUnit.warningTemp
-                                        val segColor = if (isSegCritical) BrandRed else if (isSegWarning) BrandOrange else BrandGreen
-                                        val strokeW = if (isSegCritical) 5.5f else 4f
-
-                                        drawLine(
-                                            color = segColor,
-                                            start = Offset(prevX, prevY),
-                                            end = Offset(currX, currY),
-                                            strokeWidth = strokeW,
-                                            cap = StrokeCap.Round
-                                        )
-                                    }
-
-                                    // Plot Bearing Temp Dots
-                                    bearingTempPoints.forEachIndexed { index, valTemp ->
-                                        val x = getX(index)
-                                        val y = (height - (valTemp / maxScale).coerceIn(0f, 1f) * height).coerceIn(16f, height - 16f)
-                                        val isCritical = valTemp >= selectedUnit.criticalTemp
-                                        val isWarning = valTemp >= selectedUnit.warningTemp
-                                        val dotColor = if (isCritical) BrandRed else if (isWarning) BrandOrange else BrandGreen
-                                        val dotRadius = if (isCritical) 6.5f else 4.5f
-
-                                        if (isCritical) {
-                                            drawCircle(
-                                                color = BrandRed.copy(alpha = 0.35f),
-                                                radius = 11f,
-                                                center = Offset(x, y)
-                                            )
-                                        }
-                                        drawCircle(
-                                            color = dotColor,
-                                            radius = dotRadius,
-                                            center = Offset(x, y)
-                                        )
-                                    }
-
-                                    // Draw Temperature measurement numbers along the line with red color for critical
-                                    drawIntoCanvas { canvas ->
-                                        val paintTempCritical = Paint().apply {
-                                            color = android.graphics.Color.rgb(186, 26, 26) // BrandRed
-                                            textSize = 25f
-                                            typeface = Typeface.DEFAULT_BOLD
-                                            textAlign = Paint.Align.CENTER
-                                            isAntiAlias = true
-                                        }
-                                        val paintTempWarning = Paint().apply {
-                                            color = android.graphics.Color.rgb(245, 124, 0) // BrandOrange
-                                            textSize = 24f
-                                            typeface = Typeface.DEFAULT_BOLD
-                                            textAlign = Paint.Align.CENTER
-                                            isAntiAlias = true
-                                        }
-                                        val paintTempNormal = Paint().apply {
-                                            color = android.graphics.Color.rgb(0, 106, 106) // BrandGreen
-                                            textSize = 24f
-                                            typeface = Typeface.DEFAULT_BOLD
-                                            textAlign = Paint.Align.CENTER
-                                            isAntiAlias = true
-                                        }
-
-                                        bearingTempPoints.forEachIndexed { index, valTemp ->
-                                            val x = getX(index)
-                                            val y = (height - (valTemp / maxScale).coerceIn(0f, 1f) * height).coerceIn(16f, height - 16f)
-                                            val labelTemp = "${String.format(Locale.US, "%.1f", valTemp)}°"
-                                            val p = if (valTemp >= selectedUnit.criticalTemp) paintTempCritical else if (valTemp >= selectedUnit.warningTemp) paintTempWarning else paintTempNormal
-                                            canvas.nativeCanvas.drawText(labelTemp, x, (y - 10f).coerceAtLeast(20f), p)
-                                        }
-                                    }
-                                } else {
-                                    // Greasing Chart (0% - 100%)
-                                    val maxScale = 100f
-                                    val standardY = height - (100f / maxScale).coerceIn(0f, 1f) * height + 16f
-                                    val criticalY = height - (50f / maxScale).coerceIn(0f, 1f) * height
-
-                                    // Target 100% threshold line (Green)
-                                    drawLine(
-                                        color = BrandGreen.copy(alpha = 0.5f),
-                                        start = Offset(0f, standardY),
-                                        end = Offset(width, standardY),
-                                        strokeWidth = 2f
-                                    )
-                                    // Critical Greasing threshold line (Red, < 50%)
-                                    drawLine(
-                                        color = BrandRed.copy(alpha = 0.75f),
-                                        start = Offset(0f, criticalY),
-                                        end = Offset(width, criticalY),
-                                        strokeWidth = 2f
-                                    )
-
-                                    // Plot Greasing Line Segments with dynamic Critical Red coloring
-                                    for (index in 1 until greasingPoints.size) {
-                                        val prevGreas = greasingPoints[index - 1]
-                                        val currGreas = greasingPoints[index]
-                                        val prevX = getX(index - 1)
-                                        val prevY = (height - (prevGreas / maxScale).coerceIn(0f, 1f) * height).coerceIn(16f, height - 16f)
-                                        val currX = getX(index)
-                                        val currY = (height - (currGreas / maxScale).coerceIn(0f, 1f) * height).coerceIn(16f, height - 16f)
-
-                                        val isSegCritical = currGreas < 50f || prevGreas < 50f
-                                        val segColor = if (isSegCritical) BrandRed else BrandGreen
-                                        val strokeW = if (isSegCritical) 5.5f else 4f
-
-                                        drawLine(
-                                            color = segColor,
-                                            start = Offset(prevX, prevY),
-                                            end = Offset(currX, currY),
-                                            strokeWidth = strokeW,
-                                            cap = StrokeCap.Round
-                                        )
-                                    }
-
-                                    // Plot Greasing Dots and vertical pillars
-                                    greasingPoints.forEachIndexed { index, valGreas ->
-                                        val x = getX(index)
-                                        val y = (height - (valGreas / maxScale).coerceIn(0f, 1f) * height).coerceIn(16f, height - 16f)
-                                        val isCritical = valGreas < 50f
-                                        val dotColor = if (isCritical) BrandRed else BrandGreen
-                                        val dotRadius = if (isCritical) 6.5f else 5f
-
-                                        // Subtle vertical guideline to baseline
-                                        drawLine(
-                                            color = dotColor.copy(alpha = 0.25f),
-                                            start = Offset(x, y),
-                                            end = Offset(x, height - 8f),
-                                            strokeWidth = 3f,
-                                            cap = StrokeCap.Round
-                                        )
-
-                                        if (isCritical) {
-                                            drawCircle(
-                                                color = BrandRed.copy(alpha = 0.35f),
-                                                radius = 11f,
-                                                center = Offset(x, y)
-                                            )
-                                        }
-                                        drawCircle(
-                                            color = dotColor,
-                                            radius = dotRadius,
-                                            center = Offset(x, y)
-                                        )
-                                    }
-
-                                    // Draw Greasing status labels along the line
-                                    drawIntoCanvas { canvas ->
-                                        val paintGreasCritical = Paint().apply {
-                                            color = android.graphics.Color.rgb(186, 26, 26) // BrandRed
-                                            textSize = 21f
-                                            typeface = Typeface.DEFAULT_BOLD
-                                            textAlign = Paint.Align.CENTER
-                                            isAntiAlias = true
-                                        }
-                                        val paintGreasNormal = Paint().apply {
-                                            color = android.graphics.Color.rgb(0, 106, 106) // BrandGreen
-                                            textSize = 21f
-                                            typeface = Typeface.DEFAULT_BOLD
-                                            textAlign = Paint.Align.CENTER
-                                            isAntiAlias = true
-                                        }
-
-                                        greasingPoints.forEachIndexed { index, valGreas ->
-                                            val x = getX(index)
-                                            val y = (height - (valGreas / maxScale).coerceIn(0f, 1f) * height).coerceIn(16f, height - 16f)
-                                            val isCritical = valGreas < 50f
-                                            val labelGreas = if (timeRangeSelection == 2) {
-                                                if (valGreas >= 50f) "${valGreas.toInt()}% OK" else "${valGreas.toInt()}%"
-                                            } else {
-                                                if (isCritical) "0% Belum" else "100% OK"
-                                            }
-                                            val p = if (isCritical) paintGreasCritical else paintGreasNormal
-                                            canvas.nativeCanvas.drawText(labelGreas, x, (y - 10f).coerceAtLeast(20f), p)
-                                        }
-                                    }
-                                }
+                            ) {
+                                CentrifugeTrendCanvas(
+                                    modifier = Modifier.fillMaxSize(),
+                                    trendTabSelection = trendTabSelection,
+                                    historyPoints = historyPoints,
+                                    devVibPoints = devVibPoints,
+                                    ndevVibPoints = ndevVibPoints,
+                                    bearingTempPoints = bearingTempPoints,
+                                    greasingPoints = greasingPoints,
+                                    selectedUnit = selectedUnit,
+                                    timeRangeSelection = timeRangeSelection,
+                                    isEnlarged = isChartExpandedHeight
+                                )
                             }
 
                             if (hasCriticalValue) {
@@ -2254,209 +3219,25 @@ fun DashboardScreen(
                                         .background(BrandRed, RoundedCornerShape(6.dp))
                                         .padding(horizontal = 7.dp, vertical = 2.dp)
                                 ) {
-                                    Text("KRITIKAL", color = Color.White, fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                                    Text("KRITIKAL", color = Color.White, fontSize = 8.5.sp, fontWeight = FontWeight.Bold)
                                 }
                             }
                         }
 
-                        // X-axis Time / Date Labels
-                        Spacer(modifier = Modifier.height(4.dp))
-                        Row(
-                            modifier = Modifier.fillMaxWidth().padding(horizontal = 4.dp),
-                            horizontalArrangement = Arrangement.SpaceBetween
-                        ) {
-                            when (timeRangeSelection) {
-                                0 -> {
-                                    // Hari Ini: Menampilkan waktu input di hari ini
-                                    if (todayUnitLogs.isNotEmpty()) {
-                                        if (todayUnitLogs.size == 1) {
-                                            Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
-                                                Text(
-                                                    text = "Pengukuran: ${WibDateUtils.format("HH:mm", todayUnitLogs[0].timestamp)} WIB (Hari Ini)",
-                                                    fontSize = 9.sp,
-                                                    color = SlateGrey,
-                                                    fontWeight = FontWeight.Bold
-                                                )
-                                            }
-                                        } else {
-                                            todayUnitLogs.forEachIndexed { idx, log ->
-                                                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                                    Text(
-                                                        text = "Input #${idx + 1}",
-                                                        fontSize = 8.5.sp,
-                                                        color = SlateGrey,
-                                                        fontWeight = FontWeight.Bold
-                                                    )
-                                                    Text(
-                                                        text = "${WibDateUtils.format("HH:mm", log.timestamp)} WIB",
-                                                        fontSize = 8.sp,
-                                                        color = Color.Gray
-                                                    )
-                                                }
-                                            }
-                                        }
-                                    }
-                                }
-                                1 -> {
-                                    // Seminggu: 7 hari kebelakang (H-6 s/d Hari Ini dalam WIB)
-                                    val weeklyLabels = remember {
-                                        List(7) { i ->
-                                            val offsetDays = i - 6
-                                            val cal = WibDateUtils.getCalendar().apply {
-                                                add(Calendar.DAY_OF_YEAR, offsetDays)
-                                            }
-                                            val dayName = when (cal.get(Calendar.DAY_OF_WEEK)) {
-                                                Calendar.SUNDAY -> "Min"
-                                                Calendar.MONDAY -> "Sen"
-                                                Calendar.TUESDAY -> "Sel"
-                                                Calendar.WEDNESDAY -> "Rab"
-                                                Calendar.THURSDAY -> "Kam"
-                                                Calendar.FRIDAY -> "Jum"
-                                                Calendar.SATURDAY -> "Sab"
-                                                else -> ""
-                                            }
-                                            val dateStr = WibDateUtils.format("dd/MM", cal.time)
-                                            val isToday = i == 6
-                                            Pair(if (isToday) "Hari Ini" else dayName, dateStr)
-                                        }
-                                    }
+                        Spacer(modifier = Modifier.height(6.dp))
 
-                                    weeklyLabels.forEach { (dayName, dateStr) ->
-                                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                            Text(
-                                                text = dayName,
-                                                fontSize = 9.sp,
-                                                color = if (dayName == "Hari Ini") BrandGreen else SlateGrey,
-                                                fontWeight = FontWeight.Bold
-                                            )
-                                            Text(
-                                                text = dateStr,
-                                                fontSize = 8.sp,
-                                                color = Color.Gray,
-                                                fontWeight = FontWeight.Normal
-                                            )
-                                        }
-                                    }
-                                }
-                                2 -> {
-                                    // Sebulan: 4 minggu kebelakang (Rata-rata per minggu)
-                                    monthlyWeekIntervals.forEachIndexed { idx, week ->
-                                        val isCurrentWeek = idx == 3
-                                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                            Text(
-                                                text = week.shortTitle,
-                                                fontSize = 9.sp,
-                                                color = if (isCurrentWeek) BrandGreen else SlateGrey,
-                                                fontWeight = FontWeight.Bold
-                                            )
-                                            Text(
-                                                text = week.dateRangeStr,
-                                                fontSize = 7.5.sp,
-                                                color = Color.Gray,
-                                                fontWeight = FontWeight.Normal
-                                            )
-                                            Text(
-                                                text = "Rata-rata",
-                                                fontSize = 7.sp,
-                                                color = if (isCurrentWeek) BrandGreen.copy(alpha = 0.85f) else Color.LightGray,
-                                                fontWeight = FontWeight.SemiBold
-                                            )
-                                        }
-                                    }
-                                }
-                                else -> {
-                                    // Tanggal Kustom
-                                    if (customUnitLogs.isNotEmpty()) {
-                                        if (customUnitLogs.size == 1) {
-                                            Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
-                                                Text(
-                                                    text = "Pengukuran: ${WibDateUtils.format("dd/MM/yyyy HH:mm", customUnitLogs[0].timestamp)} WIB",
-                                                    fontSize = 9.sp,
-                                                    color = SlateGrey,
-                                                    fontWeight = FontWeight.Bold
-                                                )
-                                            }
-                                        } else {
-                                            customUnitLogs.forEachIndexed { idx, log ->
-                                                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                                    Text(
-                                                        text = "#${idx + 1}",
-                                                        fontSize = 8.5.sp,
-                                                        color = SlateGrey,
-                                                        fontWeight = FontWeight.Bold
-                                                    )
-                                                    Text(
-                                                        text = WibDateUtils.format("dd/MM", log.timestamp),
-                                                        fontSize = 8.sp,
-                                                        color = Color.Gray
-                                                    )
-                                                    Text(
-                                                        text = WibDateUtils.format("HH:mm", log.timestamp),
-                                                        fontSize = 7.5.sp,
-                                                        color = Color.LightGray
-                                                    )
-                                                }
-                                            }
-                                        }
-                                    } else {
-                                        Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
-                                            Text(
-                                                text = "Periode: ${WibDateUtils.format("dd/MM/yy", customStartDate)} - ${WibDateUtils.format("dd/MM/yy", customEndDate)} (Tidak ada data)",
-                                                fontSize = 9.sp,
-                                                color = Color.Gray
-                                            )
-                                        }
-                                    }
-                                }
-                            }
-                        }
+                        // X-Axis Time / Date Labels
+                        TrendChartXAxisLabels(
+                            timeRangeSelection = timeRangeSelection,
+                            todayUnitLogs = todayUnitLogs,
+                            monthlyWeekIntervals = monthlyWeekIntervals,
+                            customUnitLogs = customUnitLogs,
+                            customStartDate = customStartDate,
+                            customEndDate = customEndDate
+                        )
 
-                        // Chart Legend / Info
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(top = 8.dp),
-                            horizontalArrangement = Arrangement.SpaceBetween
-                        ) {
-                            when (trendTabSelection) {
-                                0 -> {
-                                    Text("Garis: DE (Hijau/Tebal), NDE (Abu-Abu/Tipis)", fontSize = 8.sp, color = Color.DarkGray)
-                                    Row(verticalAlignment = Alignment.CenterVertically) {
-                                        Box(modifier = Modifier.size(8.dp).background(BrandYellow).clip(CircleShape))
-                                        Spacer(modifier = Modifier.width(4.dp))
-                                        Text("Warning (4.5)", fontSize = 8.sp, color = Color.Black)
-                                        Spacer(modifier = Modifier.width(8.dp))
-                                        Box(modifier = Modifier.size(8.dp).background(BrandRed).clip(CircleShape))
-                                        Spacer(modifier = Modifier.width(4.dp))
-                                        Text("Trip Critical (8.8)", fontSize = 8.sp, color = Color.Black)
-                                    }
-                                }
-                                1 -> {
-                                    Text("Garis: Suhu Bearing (Oranye/Tebal)", fontSize = 8.sp, color = Color.DarkGray)
-                                    Row(verticalAlignment = Alignment.CenterVertically) {
-                                        Box(modifier = Modifier.size(8.dp).background(BrandYellow).clip(CircleShape))
-                                        Spacer(modifier = Modifier.width(4.dp))
-                                        Text("Warning (65°C)", fontSize = 8.sp, color = Color.Black)
-                                        Spacer(modifier = Modifier.width(8.dp))
-                                        Box(modifier = Modifier.size(8.dp).background(BrandRed).clip(CircleShape))
-                                        Spacer(modifier = Modifier.width(4.dp))
-                                        Text("Trip Critical (75°C)", fontSize = 8.sp, color = Color.Black)
-                                    }
-                                }
-                                else -> {
-                                    Text("Garis: Pelumasan Greasing (Hijau = OK, Merah = Belum)", fontSize = 8.sp, color = Color.DarkGray)
-                                    Row(verticalAlignment = Alignment.CenterVertically) {
-                                        Box(modifier = Modifier.size(8.dp).background(BrandGreen).clip(CircleShape))
-                                        Spacer(modifier = Modifier.width(4.dp))
-                                        Text("Standar (100%)", fontSize = 8.sp, color = Color.Black)
-                                        Spacer(modifier = Modifier.width(8.dp))
-                                        Box(modifier = Modifier.size(8.dp).background(BrandRed).clip(CircleShape))
-                                        Spacer(modifier = Modifier.width(4.dp))
-                                        Text("Perlu Greasing (0%)", fontSize = 8.sp, color = Color.Black)
-                                    }
-                                }
-                            }
-                        }
+                        // Legend and Explanation
+                        TrendChartLegend(trendTabSelection = trendTabSelection)
 
                     } else {
                         // Empty State for Harian when no data has been inputted yet today
@@ -2515,6 +3296,24 @@ fun DashboardScreen(
                         }
                     }
                 }
+            }
+
+            if (showEnlargedChartDialog) {
+                EnlargedChartModalDialog(
+                    selectedUnit = selectedUnit,
+                    initialTrendTab = trendTabSelection,
+                    timeRangeSelection = timeRangeSelection,
+                    customStartDate = customStartDate,
+                    customEndDate = customEndDate,
+                    devVibPoints = devVibPoints,
+                    ndevVibPoints = ndevVibPoints,
+                    bearingTempPoints = bearingTempPoints,
+                    greasingPoints = greasingPoints,
+                    todayUnitLogs = todayUnitLogs,
+                    monthlyWeekIntervals = monthlyWeekIntervals,
+                    customUnitLogs = customUnitLogs,
+                    onDismiss = { showEnlargedChartDialog = false }
+                )
             }
         }
 
@@ -2626,7 +3425,7 @@ fun DashboardScreen(
 
                                     Spacer(modifier = Modifier.height(4.dp))
                                     Text(
-                                        text = "Operator: ${log.operatorName.ifEmpty { "Operator Centrifuge" }}",
+                                        text = "Nama: ${log.operatorName.ifEmpty { "Operator Centrifuge" }}",
                                         fontSize = 11.sp,
                                         fontWeight = FontWeight.Medium,
                                         color = Color.DarkGray
@@ -2634,7 +3433,7 @@ fun DashboardScreen(
 
                                     Spacer(modifier = Modifier.height(2.dp))
                                     Text(
-                                        text = "Vibrasi (mm/s):\n• DE: ${log.driveEndVibration}  • NDE: ${log.nonDriveEndVibration}\n• Motor: ${log.motorBearingVibration}  • G-box: ${log.gearboxBearingVibration}  • Bowl: ${log.bowlVibration}",
+                                        text = "Vibrasi (mm/s):\n• Axial 1: ${log.driveEndVibration}  • Axial 2: ${log.nonDriveEndVibration}\n• Horizontal: ${log.motorBearingVibration}  • Vertikal: ${log.gearboxBearingVibration}",
                                         fontSize = 11.sp,
                                         color = Color.Black,
                                         lineHeight = 15.sp
@@ -2732,19 +3531,58 @@ fun DashboardScreen(
         Dialog(onDismissRequest = { showVibDialog = false }) {
             var selectedUnitForLog by remember { mutableStateOf(selectedUnit.id) }
             var selectedMachineStatus by remember { mutableStateOf("Operasi") }
-            var operatorName by remember { mutableStateOf("Wahyu") }
+            var operatorName by remember { mutableStateOf("") }
             var shiftSelection by remember { mutableStateOf("Pagi") }
             var deVib by remember { mutableStateOf("") }
             var ndeVib by remember { mutableStateOf("") }
             var motorVib by remember { mutableStateOf("") }
             var gearboxVib by remember { mutableStateOf("") }
-            var bowlVib by remember { mutableStateOf("") }
             var bTemp by remember { mutableStateOf("") }
             var mTemp by remember { mutableStateOf("") }
             var greasingSelection by remember { mutableStateOf("Belum Masuk Jadwal") }
             var soundSelection by remember { mutableStateOf("Normal") }
             var hasLeakageSelection by remember { mutableStateOf(false) }
             var comments by remember { mutableStateOf("") }
+
+            var activeVibInfoTitle by remember { mutableStateOf<String?>(null) }
+            var activeVibInfoText by remember { mutableStateOf<String?>(null) }
+
+            if (activeVibInfoText != null) {
+                AlertDialog(
+                    onDismissRequest = { activeVibInfoText = null },
+                    icon = {
+                        Icon(
+                            imageVector = Icons.Default.Info,
+                            contentDescription = "Informasi Titik Ukur",
+                            tint = BrandGreen,
+                            modifier = Modifier.size(28.dp)
+                        )
+                    },
+                    title = {
+                        Text(
+                            text = activeVibInfoTitle ?: "Informasi Titik Ukur",
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 15.sp,
+                            color = SlateGrey
+                        )
+                    },
+                    text = {
+                        Text(
+                            text = activeVibInfoText ?: "",
+                            fontSize = 13.sp,
+                            color = Color(0xFF1E293B),
+                            lineHeight = 18.sp
+                        )
+                    },
+                    confirmButton = {
+                        TextButton(onClick = { activeVibInfoText = null }) {
+                            Text("Tutup", fontWeight = FontWeight.Bold, color = BrandGreen)
+                        }
+                    },
+                    containerColor = Color.White,
+                    shape = RoundedCornerShape(12.dp)
+                )
+            }
 
             Card(
                 colors = CardDefaults.cardColors(containerColor = Color.White),
@@ -2792,77 +3630,41 @@ fun DashboardScreen(
                         }
                     }
 
-                    // Nama Operator  :       |   Dropdown   |
-                    var operatorDropdownExpanded by remember { mutableStateOf(false) }
-                    val operatorList = listOf("Wahyu", "Abdul Aziz")
-
+                    // Nama : | Input Teks |
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
                         Text(
-                            text = "Nama Operator  :",
+                            text = "Nama  :",
                             fontSize = 13.sp,
                             fontWeight = FontWeight.Bold,
                             color = SlateGrey
                         )
-                        Box(modifier = Modifier.weight(1f)) {
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .clip(RoundedCornerShape(8.dp))
-                                    .background(Color.White)
-                                    .border(
-                                        width = 1.dp,
-                                        color = if (operatorDropdownExpanded) BrandGreen else Color(0xFFCBD5E1),
-                                        shape = RoundedCornerShape(8.dp)
-                                    )
-                                    .clickable { operatorDropdownExpanded = !operatorDropdownExpanded }
-                                    .padding(horizontal = 12.dp, vertical = 10.dp)
-                                    .testTag("operator_name_dropdown"),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.SpaceBetween
-                            ) {
-                                Text(
-                                    text = operatorName.ifEmpty { "Pilih Operator" },
-                                    fontSize = 13.sp,
-                                    fontWeight = FontWeight.SemiBold,
-                                    color = Color.Black
-                                )
-                                Icon(
-                                    imageVector = Icons.Default.ArrowDropDown,
-                                    contentDescription = "Pilih Operator",
-                                    tint = Color.Black
-                                )
-                            }
-                            DropdownMenu(
-                                expanded = operatorDropdownExpanded,
-                                onDismissRequest = { operatorDropdownExpanded = false },
-                                modifier = Modifier.background(Color.White)
-                            ) {
-                                operatorList.forEach { name ->
-                                    DropdownMenuItem(
-                                        text = {
-                                            Text(
-                                                name,
-                                                fontSize = 13.sp,
-                                                fontWeight = if (operatorName == name) FontWeight.Bold else FontWeight.Normal,
-                                                color = Color.Black
-                                            )
-                                        },
-                                        onClick = {
-                                            operatorName = name
-                                            operatorDropdownExpanded = false
-                                        },
-                                        leadingIcon = if (operatorName == name) {
-                                            { Icon(Icons.Default.Check, contentDescription = null, tint = Color.Black, modifier = Modifier.size(16.dp)) }
-                                        } else null,
-                                        modifier = Modifier.background(Color.White)
-                                    )
-                                }
-                            }
-                        }
+                        OutlinedTextField(
+                            value = operatorName,
+                            onValueChange = { operatorName = it },
+                            placeholder = { Text("Ketik nama pemeriksa...", fontSize = 12.sp, color = Color.Gray) },
+                            singleLine = true,
+                            shape = RoundedCornerShape(8.dp),
+                            colors = OutlinedTextFieldDefaults.colors(
+                                focusedTextColor = Color.Black,
+                                unfocusedTextColor = Color.Black,
+                                focusedContainerColor = Color.White,
+                                unfocusedContainerColor = Color.White,
+                                focusedBorderColor = BrandGreen,
+                                unfocusedBorderColor = Color(0xFFCBD5E1)
+                            ),
+                            textStyle = LocalTextStyle.current.copy(
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                color = Color.Black
+                            ),
+                            modifier = Modifier
+                                .weight(1f)
+                                .testTag("operator_name_input")
+                        )
                     }
 
                     // Shift   :   |Pagi|      |Malam|
@@ -3244,17 +4046,52 @@ fun DashboardScreen(
                         modifier = Modifier.fillMaxWidth(),
                         verticalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        val vibrationFields = listOf(
-                            Triple("1. Drive End :", deVib, "drive_end_input") to { v: String -> deVib = v },
-                            Triple("2. Non Drive End :", ndeVib, "non_drive_end_input") to { v: String -> ndeVib = v },
-                            Triple("3. Bearing Motor :", motorVib, "motor_vibration_input") to { v: String -> motorVib = v },
-                            Triple("4. Bearing Gearbox :", gearboxVib, "gearbox_vibration_input") to { v: String -> gearboxVib = v },
-                            Triple("5. Bowl :", bowlVib, "bowl_vibration_input") to { v: String -> bowlVib = v }
+                        data class VibInputField(
+                            val number: String,
+                            val name: String,
+                            val value: String,
+                            val testTagStr: String,
+                            val info: String,
+                            val onValueChange: (String) -> Unit
                         )
 
-                        vibrationFields.forEach { (fieldInfo, onValueChange) ->
-                            val (labelText, currentVal, testTagStr) = fieldInfo
-                            val fVal = currentVal.toFloatOrNull()
+                        val vibrationFields = listOf(
+                            VibInputField(
+                                number = "1",
+                                name = "Axial 1",
+                                value = deVib,
+                                testTagStr = "axial_1_input",
+                                info = "Titik ukur pada Bearing dekat dengan pulley",
+                                onValueChange = { deVib = it }
+                            ),
+                            VibInputField(
+                                number = "2",
+                                name = "Axial 2",
+                                value = ndeVib,
+                                testTagStr = "axial_2_input",
+                                info = "Titik ukur pada Bearing dengan dengan gland packing",
+                                onValueChange = { ndeVib = it }
+                            ),
+                            VibInputField(
+                                number = "3",
+                                name = "Horizontal",
+                                value = motorVib,
+                                testTagStr = "horizontal_input",
+                                info = "Titik ukur pada Body mesin sejajar dengan titik Axial 1",
+                                onValueChange = { motorVib = it }
+                            ),
+                            VibInputField(
+                                number = "4",
+                                name = "Vertikal",
+                                value = gearboxVib,
+                                testTagStr = "vertikal_input",
+                                info = "Titik ukur pada body mesin bagian atas tegak lurus dari titik Axial",
+                                onValueChange = { gearboxVib = it }
+                            )
+                        )
+
+                        vibrationFields.forEach { field ->
+                            val fVal = field.value.toFloatOrNull()
                             val isRed = fVal != null && fVal > 4.0f
                             val isGreen = fVal != null && fVal <= 4.0f
 
@@ -3278,16 +4115,38 @@ fun DashboardScreen(
                                 modifier = Modifier.fillMaxWidth(),
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
-                                Text(
-                                    text = labelText,
-                                    fontSize = 12.sp,
-                                    fontWeight = FontWeight.SemiBold,
-                                    color = SlateGrey,
-                                    modifier = Modifier.width(132.dp)
-                                )
+                                Row(
+                                    modifier = Modifier.width(132.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text(
+                                        text = "${field.number}. ${field.name} :",
+                                        fontSize = 12.sp,
+                                        fontWeight = FontWeight.SemiBold,
+                                        color = SlateGrey,
+                                        modifier = Modifier.weight(1f, fill = false),
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                    Spacer(modifier = Modifier.width(2.dp))
+                                    IconButton(
+                                        onClick = {
+                                            activeVibInfoTitle = "${field.number}. ${field.name}"
+                                            activeVibInfoText = field.info
+                                        },
+                                        modifier = Modifier.size(24.dp)
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.Info,
+                                            contentDescription = "Info ${field.name}",
+                                            tint = BrandGreen,
+                                            modifier = Modifier.size(16.dp)
+                                        )
+                                    }
+                                }
                                 OutlinedTextField(
-                                    value = currentVal,
-                                    onValueChange = onValueChange,
+                                    value = field.value,
+                                    onValueChange = field.onValueChange,
                                     placeholder = { Text("0.0", fontSize = 12.sp, color = Color.Gray) },
                                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                                     singleLine = true,
@@ -3306,7 +4165,7 @@ fun DashboardScreen(
                                     ),
                                     modifier = Modifier
                                         .weight(1f)
-                                        .testTag(testTagStr)
+                                        .testTag(field.testTagStr)
                                 )
                                 Spacer(modifier = Modifier.width(8.dp))
                                 Text(
@@ -3450,10 +4309,10 @@ fun DashboardScreen(
                                 val ndeValue = ndeVib.toFloatOrNull() ?: 2.2f
                                 val motorVibValue = motorVib.toFloatOrNull() ?: 1.8f
                                 val gearboxVibValue = gearboxVib.toFloatOrNull() ?: 2.0f
-                                val bowlVibValue = bowlVib.toFloatOrNull() ?: 1.5f
                                 val bTempValue = bTemp.toFloatOrNull() ?: 55f
                                 val mTempValue = mTemp.toFloatOrNull() ?: 48f
-                                val alarm = if (deValue >= 8.8f || bTempValue >= 70f) "Critical" else if (deValue >= 4.5f) "Warning" else "Normal"
+                                val maxVibVal = maxOf(deValue, ndeValue, motorVibValue, gearboxVibValue)
+                                val alarm = if (maxVibVal >= 8.8f || bTempValue >= 70f) "Critical" else if (maxVibVal >= 4.5f) "Warning" else "Normal"
 
                                 val finalComments = if (comments.trim().isEmpty()) {
                                     "Log manual [$selectedUnitForLog]"
@@ -3463,13 +4322,13 @@ fun DashboardScreen(
 
                                 viewModel.addVibrationLog(
                                     VibrationLog(
-                                        operatorName = operatorName.ifEmpty { "Operator Centrifuge" },
+                                        operatorName = operatorName.trim().ifEmpty { "Operator Centrifuge" },
                                         shift = shiftSelection,
                                         driveEndVibration = deValue,
                                         nonDriveEndVibration = ndeValue,
                                         motorBearingVibration = motorVibValue,
                                         gearboxBearingVibration = gearboxVibValue,
-                                        bowlVibration = bowlVibValue,
+                                        bowlVibration = 0f,
                                         bearingTemp = bTempValue,
                                         motorTemp = mTempValue,
                                         isGreased = (greasingSelection == "Ya"),
@@ -5736,6 +6595,97 @@ fun FailureModeOptionDropdown(
     }
 }
 
+data class LevelOption(val score: Int, val description: String)
+
+val SeverityLevelOptions = listOf(
+    LevelOption(0, "Level 0 : Tidak ada Kerusakan"),
+    LevelOption(1, "Level 1 : Ringan Sekali"),
+    LevelOption(2, "Level 2 : Ringan (Minor)"),
+    LevelOption(3, "Level 3 : Sedang (Moderate)"),
+    LevelOption(4, "Level 4 : Berat (Major)"),
+    LevelOption(5, "Level 5 : Parah Sekali (Catastrophic)")
+)
+
+val OccurrenceLevelOptions = listOf(
+    LevelOption(0, "Level 0 : Tidak terjadi"),
+    LevelOption(1, "Level 1 : Sangat jarang terjadi"),
+    LevelOption(2, "Level 2 : Jarang terjadi"),
+    LevelOption(3, "Level 3 : Kadang-kadang terjadi"),
+    LevelOption(4, "Level 4 : Sering terjadi"),
+    LevelOption(5, "Level 5 : Sangat sering terjadi")
+)
+
+val DetectionLevelOptions = listOf(
+    LevelOption(0, "Level 0 : Tidak dideteksi karena tidak ada kerusakan"),
+    LevelOption(1, "Level 1 : Kerusakan sangat mudah dideteksi"),
+    LevelOption(2, "Level 2 : Kerusakan cukup mudah dideteksi"),
+    LevelOption(3, "Level 3 : Kerusakan mudah dideteksi"),
+    LevelOption(4, "Level 4 : Kerusakan sulit dideteksi"),
+    LevelOption(5, "Level 5 : Kerusakan sangat sulit dideteksi")
+)
+
+@Composable
+fun LevelDropdown(
+    value: Int,
+    options: List<LevelOption>,
+    onValueChange: (Int) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    var expanded by remember { mutableStateOf(false) }
+    Box(modifier = modifier) {
+        Row(
+            modifier = Modifier
+                .clip(RoundedCornerShape(6.dp))
+                .background(Color.White)
+                .border(1.dp, Color(0xFFCBD5E1), RoundedCornerShape(6.dp))
+                .clickable { expanded = !expanded }
+                .padding(horizontal = 10.dp, vertical = 6.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.Center
+        ) {
+            Text(
+                text = value.toString(),
+                fontSize = 12.sp,
+                fontWeight = FontWeight.Bold,
+                color = Color.Black
+            )
+            Spacer(modifier = Modifier.width(4.dp))
+            Icon(
+                imageVector = Icons.Default.ArrowDropDown,
+                contentDescription = null,
+                tint = Color.Black,
+                modifier = Modifier.size(16.dp)
+            )
+        }
+        DropdownMenu(
+            expanded = expanded,
+            onDismissRequest = { expanded = false },
+            modifier = Modifier
+                .background(Color.White)
+                .widthIn(min = 260.dp, max = 340.dp)
+        ) {
+            options.forEach { opt ->
+                val isSelected = value == opt.score
+                DropdownMenuItem(
+                    text = {
+                        Text(
+                            text = opt.description,
+                            fontSize = 12.sp,
+                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                            color = if (isSelected) BrandGreen else Color(0xFF1E293B)
+                        )
+                    },
+                    onClick = {
+                        onValueChange(opt.score)
+                        expanded = false
+                    },
+                    modifier = Modifier.background(if (isSelected) BrandGreenLight.copy(alpha = 0.5f) else Color.White)
+                )
+            }
+        }
+    }
+}
+
 @Composable
 fun ScoreDropdown(
     value: Int,
@@ -5798,17 +6748,22 @@ data class ReportRowAccumulation(
     val no: Int,
     val component: String,
     val failureModesSummary: String,
-    val totalSeverity: Int,
-    val totalOccurrence: Int,
-    val totalDetection: Int,
+    val totalSeverity: Int = 0,
+    val totalOccurrence: Int = 0,
+    val totalDetection: Int = 0,
     val totalRpn: Int,
-    val count: Int
+    val count: Int,
+    val openCount: Int = 0,
+    val doneCount: Int = 0,
+    val avgLeadTimeDays: Double = 0.0,
+    val maxLeadTimeDays: Long = 0L
 )
 
 @Composable
 fun AbnormalityScreen(
     reports: List<AbnormalityReport>,
     onAddReport: (AbnormalityReport) -> Unit,
+    onUpdateReport: (AbnormalityReport) -> Unit = {},
     onDeleteReport: (AbnormalityReport) -> Unit
 ) {
     // 2 Sub-menu di dalam Reliability PM: "Input Abnormality" & "Report"
@@ -5841,7 +6796,169 @@ fun AbnormalityScreen(
     var title by remember { mutableStateOf("") }
     var description by remember { mutableStateOf("") }
     var factor by remember { mutableStateOf("MACHINE") } // MAN, METHOD, MACHINE, ENVIRONMENT
-    var tagType by remember { mutableStateOf("None") } // Default to None
+
+    var showSeverityGuideDialog by remember { mutableStateOf(false) }
+    var showOccurenceGuideDialog by remember { mutableStateOf(false) }
+    var showDetectionGuideDialog by remember { mutableStateOf(false) }
+
+    if (showSeverityGuideDialog) {
+        AlertDialog(
+            onDismissRequest = { showSeverityGuideDialog = false },
+            icon = {
+                Icon(
+                    imageVector = Icons.Default.Info,
+                    contentDescription = "Panduan Severity",
+                    tint = BrandGreen,
+                    modifier = Modifier.size(28.dp)
+                )
+            },
+            title = {
+                Text(
+                    text = "Tingkat Keparahan (Severity)",
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 15.sp,
+                    color = SlateGrey
+                )
+            },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    SeverityLevelOptions.forEach { opt ->
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Box(
+                                modifier = Modifier
+                                    .size(22.dp)
+                                    .background(BrandGreenLight, CircleShape),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(opt.score.toString(), fontSize = 11.sp, fontWeight = FontWeight.Bold, color = BrandGreen)
+                            }
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(
+                                text = opt.description,
+                                fontSize = 12.sp,
+                                color = Color(0xFF1E293B)
+                            )
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { showSeverityGuideDialog = false }) {
+                    Text("Tutup", fontWeight = FontWeight.Bold, color = BrandGreen)
+                }
+            },
+            containerColor = Color.White,
+            shape = RoundedCornerShape(12.dp)
+        )
+    }
+
+    if (showOccurenceGuideDialog) {
+        AlertDialog(
+            onDismissRequest = { showOccurenceGuideDialog = false },
+            icon = {
+                Icon(
+                    imageVector = Icons.Default.Info,
+                    contentDescription = "Panduan Occurence",
+                    tint = BrandGreen,
+                    modifier = Modifier.size(28.dp)
+                )
+            },
+            title = {
+                Text(
+                    text = "Frekuensi Kejadian (Occurence)",
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 15.sp,
+                    color = SlateGrey
+                )
+            },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OccurrenceLevelOptions.forEach { opt ->
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Box(
+                                modifier = Modifier
+                                    .size(22.dp)
+                                    .background(Color(0xFFFEF3C7), CircleShape),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(opt.score.toString(), fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color(0xFFB45309))
+                            }
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(
+                                text = opt.description,
+                                fontSize = 12.sp,
+                                color = Color(0xFF1E293B)
+                            )
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { showOccurenceGuideDialog = false }) {
+                    Text("Tutup", fontWeight = FontWeight.Bold, color = BrandGreen)
+                }
+            },
+            containerColor = Color.White,
+            shape = RoundedCornerShape(12.dp)
+        )
+    }
+
+    if (showDetectionGuideDialog) {
+        AlertDialog(
+            onDismissRequest = { showDetectionGuideDialog = false },
+            icon = {
+                Icon(
+                    imageVector = Icons.Default.Info,
+                    contentDescription = "Panduan Detection",
+                    tint = BrandGreen,
+                    modifier = Modifier.size(28.dp)
+                )
+            },
+            title = {
+                Text(
+                    text = "Tingkat Deteksi (Detection)",
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 15.sp,
+                    color = SlateGrey
+                )
+            },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    DetectionLevelOptions.forEach { opt ->
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Box(
+                                modifier = Modifier
+                                    .size(22.dp)
+                                    .background(Color(0xFFE0E7FF), CircleShape),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(opt.score.toString(), fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color(0xFF3730A3))
+                            }
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(
+                                text = opt.description,
+                                fontSize = 12.sp,
+                                color = Color(0xFF1E293B)
+                            )
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { showDetectionGuideDialog = false }) {
+                    Text("Tutup", fontWeight = FontWeight.Bold, color = BrandGreen)
+                }
+            },
+            containerColor = Color.White,
+            shape = RoundedCornerShape(12.dp)
+        )
+    }
+
+    // State untuk Dialog Update Status Abnormality (Open <-> Done, Lead Time & Nama Mekanik)
+    var reportToUpdateStatus by remember { mutableStateOf<AbnormalityReport?>(null) }
+    var dialogSelectedStatus by remember { mutableStateOf("Done") }
+    var dialogMechanicName by remember { mutableStateOf("") }
+    var dialogRepairNotes by remember { mutableStateOf("") }
 
     // State untuk sub-menu "Report"
     var selectedPeriod by remember { mutableStateOf("Hari Ini") } // "Hari Ini", "Seminggu", "Sebulan", "Tanggal"
@@ -5939,7 +7056,11 @@ fun AbnormalityScreen(
                 r.title.contains(selectedReportMachine, ignoreCase = true) || r.description.contains(selectedReportMachine, ignoreCase = true)
             }
             inPeriod && inMachine
-        }
+        }.sortedWith(
+            compareByDescending<com.example.data.AbnormalityReport> { it.status.equals("Open", ignoreCase = true) }
+                .thenByDescending { it.rpn }
+                .thenByDescending { it.timestamp }
+        )
     }
 
     val periodDisplayLabel = remember(selectedPeriod, customStartDate, customEndDate) {
@@ -6260,10 +7381,10 @@ fun AbnormalityScreen(
                         elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
                     ) {
                         Row(modifier = Modifier.fillMaxWidth()) {
-                            // 1. FREEZE PANE (Kolom No & Komponen tetap berada di posisi kiri saat di-scroll)
+                            // 1. FREEZE PANE (Kolom No & Komponen disempitkan agar area scrollable lebih luas)
                             Column(
                                 modifier = Modifier
-                                    .width(150.dp)
+                                    .width(100.dp)
                                     .background(Color.White)
                                     .drawBehind {
                                         // Garis pemisah vertikal / pembatas freeze pane
@@ -6281,11 +7402,11 @@ fun AbnormalityScreen(
                                         .fillMaxWidth()
                                         .height(44.dp)
                                         .background(Color(0xFF1E293B))
-                                        .padding(horizontal = 8.dp),
+                                        .padding(horizontal = 6.dp),
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
-                                    Text("No", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color.White, modifier = Modifier.width(28.dp), textAlign = TextAlign.Center)
-                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Text("No", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color.White, modifier = Modifier.width(20.dp), textAlign = TextAlign.Center)
+                                    Spacer(modifier = Modifier.width(3.dp))
                                     Text("Komponen", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color.White, modifier = Modifier.weight(1f))
                                 }
 
@@ -6299,33 +7420,33 @@ fun AbnormalityScreen(
                                             .fillMaxWidth()
                                             .height(52.dp)
                                             .background(if (isEven) Color.White else Color(0xFFF8FAFC))
-                                            .padding(horizontal = 8.dp),
+                                            .padding(horizontal = 6.dp),
                                         verticalAlignment = Alignment.CenterVertically
                                     ) {
                                         Text(
                                             text = item.no.toString(),
-                                            fontSize = 12.sp,
+                                            fontSize = 11.sp,
                                             fontWeight = FontWeight.Bold,
                                             color = SlateGrey,
-                                            modifier = Modifier.width(28.dp),
+                                            modifier = Modifier.width(20.dp),
                                             textAlign = TextAlign.Center
                                         )
-                                        Spacer(modifier = Modifier.width(4.dp))
+                                        Spacer(modifier = Modifier.width(3.dp))
                                         if (item.isCustomInput) {
                                             Box(
                                                 modifier = Modifier
                                                     .weight(1f)
-                                                    .height(34.dp)
-                                                    .clip(RoundedCornerShape(6.dp))
+                                                    .height(32.dp)
+                                                    .clip(RoundedCornerShape(4.dp))
                                                     .background(Color.White)
-                                                    .border(1.dp, Color(0xFFCBD5E1), RoundedCornerShape(6.dp))
-                                                    .padding(horizontal = 6.dp),
+                                                    .border(1.dp, Color(0xFFCBD5E1), RoundedCornerShape(4.dp))
+                                                    .padding(horizontal = 4.dp),
                                                 contentAlignment = Alignment.CenterStart
                                             ) {
                                                 if (item.component.isEmpty()) {
                                                     Text(
-                                                        text = "Ketik komponen...",
-                                                        fontSize = 11.sp,
+                                                        text = "Lainnya...",
+                                                        fontSize = 10.sp,
                                                         color = Color(0xFF94A3B8)
                                                     )
                                                 }
@@ -6344,10 +7465,12 @@ fun AbnormalityScreen(
                                         } else {
                                             Text(
                                                 text = item.component,
-                                                fontSize = 12.sp,
+                                                fontSize = 11.sp,
                                                 fontWeight = FontWeight.SemiBold,
                                                 color = Color.Black,
-                                                modifier = Modifier.weight(1f)
+                                                modifier = Modifier.weight(1f),
+                                                maxLines = 1,
+                                                overflow = TextOverflow.Ellipsis
                                             )
                                         }
                                     }
@@ -6373,9 +7496,63 @@ fun AbnormalityScreen(
                                         verticalAlignment = Alignment.CenterVertically
                                     ) {
                                         Text("Failure Mode", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color.White, modifier = Modifier.width(185.dp))
-                                        Text("Level Severity (keparahan)", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color.White, modifier = Modifier.width(135.dp), textAlign = TextAlign.Center)
-                                        Text("Occurence (Jumlah kejadian)", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color.White, modifier = Modifier.width(145.dp), textAlign = TextAlign.Center)
-                                        Text("Detection (Level Deteksi)", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color.White, modifier = Modifier.width(135.dp), textAlign = TextAlign.Center)
+                                        Row(
+                                            modifier = Modifier.width(135.dp),
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.Center
+                                        ) {
+                                            Text("Level Severity", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                                            Spacer(modifier = Modifier.width(2.dp))
+                                            IconButton(
+                                                onClick = { showSeverityGuideDialog = true },
+                                                modifier = Modifier.size(20.dp)
+                                            ) {
+                                                Icon(
+                                                    imageVector = Icons.Default.Info,
+                                                    contentDescription = "Panduan Severity",
+                                                    tint = Color(0xFFFCD34D),
+                                                    modifier = Modifier.size(14.dp)
+                                                )
+                                            }
+                                        }
+                                        Row(
+                                            modifier = Modifier.width(145.dp),
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.Center
+                                        ) {
+                                            Text("Occurence", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                                            Spacer(modifier = Modifier.width(2.dp))
+                                            IconButton(
+                                                onClick = { showOccurenceGuideDialog = true },
+                                                modifier = Modifier.size(20.dp)
+                                            ) {
+                                                Icon(
+                                                    imageVector = Icons.Default.Info,
+                                                    contentDescription = "Panduan Occurence",
+                                                    tint = Color(0xFFFCD34D),
+                                                    modifier = Modifier.size(14.dp)
+                                                )
+                                            }
+                                        }
+                                        Row(
+                                            modifier = Modifier.width(135.dp),
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.Center
+                                        ) {
+                                            Text("Detection", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                                            Spacer(modifier = Modifier.width(2.dp))
+                                            IconButton(
+                                                onClick = { showDetectionGuideDialog = true },
+                                                modifier = Modifier.size(20.dp)
+                                            ) {
+                                                Icon(
+                                                    imageVector = Icons.Default.Info,
+                                                    contentDescription = "Panduan Detection",
+                                                    tint = Color(0xFFFCD34D),
+                                                    modifier = Modifier.size(14.dp)
+                                                )
+                                            }
+                                        }
                                         Text("Risk Priority Number (RPN)", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color.White, modifier = Modifier.width(170.dp), textAlign = TextAlign.Center)
                                     }
 
@@ -6434,20 +7611,23 @@ fun AbnormalityScreen(
                                                 )
                                             }
                                             Box(modifier = Modifier.width(135.dp), contentAlignment = Alignment.Center) {
-                                                ScoreDropdown(
+                                                LevelDropdown(
                                                     value = item.severity,
+                                                    options = SeverityLevelOptions,
                                                     onValueChange = { item.severity = it }
                                                 )
                                             }
                                             Box(modifier = Modifier.width(145.dp), contentAlignment = Alignment.Center) {
-                                                ScoreDropdown(
+                                                LevelDropdown(
                                                     value = item.occurrence,
+                                                    options = OccurrenceLevelOptions,
                                                     onValueChange = { item.occurrence = it }
                                                 )
                                             }
                                             Box(modifier = Modifier.width(135.dp), contentAlignment = Alignment.Center) {
-                                                ScoreDropdown(
+                                                LevelDropdown(
                                                     value = item.detection,
+                                                    options = DetectionLevelOptions,
                                                     onValueChange = { item.detection = it }
                                                 )
                                             }
@@ -6509,7 +7689,11 @@ fun AbnormalityScreen(
                                         rpn = calculatedRpn,
                                         photoUri = null,
                                         picName = "$selectedOperator ($selectedShift)",
-                                        tagType = tagType
+                                        tagType = "",
+                                        status = "Open",
+                                        mechanicName = "",
+                                        repairNotes = "",
+                                        resolvedTimestamp = 0L
                                     )
                                 )
                             }
@@ -6564,22 +7748,49 @@ fun AbnormalityScreen(
                             )
                         }
 
-                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                            val isOpen = r.status.equals("Open", ignoreCase = true)
+                            val endMillis = if (!isOpen && r.resolvedTimestamp > 0L) r.resolvedTimestamp else System.currentTimeMillis()
+                            val leadTimeDays = maxOf(0L, (endMillis - r.timestamp) / (24L * 60 * 60 * 1000L))
+                            val leadTimeText = if (leadTimeDays == 0L) "0 hari" else "$leadTimeDays hari"
+
+                            // Status Tag
                             Box(
                                 modifier = Modifier
                                     .background(
-                                        if (r.tagType == "Yellow Tag") BrandYellow
-                                        else if (r.tagType == "White Tag") Color.LightGray
-                                        else BrandRed.copy(alpha = 0.5f),
+                                        if (isOpen) Color(0xFFFFF7ED) else Color(0xFFF0FDF4),
                                         RoundedCornerShape(4.dp)
                                     )
-                                    .padding(horizontal = 8.dp, vertical = 2.dp)
+                                    .border(1.dp, if (isOpen) Color(0xFFFED7AA) else Color(0xFF86EFAC), RoundedCornerShape(4.dp))
+                                    .padding(horizontal = 6.dp, vertical = 2.dp)
                             ) {
-                                Text(r.tagType, fontSize = 10.sp, fontWeight = FontWeight.Bold, color = Color.Black)
+                                Text(
+                                    if (isOpen) "Open ($leadTimeText)" else "Done",
+                                    fontSize = 10.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = if (isOpen) Color(0xFFC2410C) else Color(0xFF15803D)
+                                )
                             }
+
                             IconButton(onClick = { onDeleteReport(r) }, modifier = Modifier.size(24.dp)) {
                                 Icon(imageVector = Icons.Default.Delete, contentDescription = "Delete", tint = Color.Gray)
                             }
+                        }
+                    }
+
+                    // Tampilkan info mekanik jika Done
+                    if (!r.status.equals("Open", ignoreCase = true) && r.mechanicName.isNotBlank()) {
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(4.dp),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .background(Color(0xFFF0FDF4), RoundedCornerShape(6.dp))
+                                .padding(horizontal = 8.dp, vertical = 4.dp)
+                        ) {
+                            Icon(Icons.Default.Build, contentDescription = null, tint = Color(0xFF15803D), modifier = Modifier.size(13.dp))
+                            Text("Mekanik Perbaikan: ${r.mechanicName}", fontSize = 10.5.sp, fontWeight = FontWeight.SemiBold, color = Color(0xFF166534))
                         }
                     }
 
@@ -6753,19 +7964,42 @@ fun AbnormalityScreen(
 
                         // RINGKASAN STATISTIK CEPAT (KPI SUMMARY)
                         val totalAccRpn = filteredReports.sumOf { it.rpn }
-                        val avgAccRpn = if (filteredReports.isNotEmpty()) totalAccRpn / filteredReports.size else 0
+                        val openCasesCount = filteredReports.count { it.status.equals("Open", ignoreCase = true) }
+                        val doneCasesCount = filteredReports.count { it.status.equals("Done", ignoreCase = true) }
                         Row(
                             modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
                         ) {
                             Card(
                                 colors = CardDefaults.cardColors(containerColor = BrandGreenLight),
                                 shape = RoundedCornerShape(12.dp),
                                 modifier = Modifier.weight(1f)
                             ) {
-                                Column(modifier = Modifier.padding(10.dp)) {
-                                    Text("Total Temuan", fontSize = 10.sp, color = SlateGrey)
-                                    Text("${filteredReports.size} Kasus", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = BrandGreen)
+                                Column(modifier = Modifier.padding(8.dp)) {
+                                    Text("Total Temuan", fontSize = 9.5.sp, color = SlateGrey)
+                                    Text("${filteredReports.size} Kasus", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = BrandGreen)
+                                }
+                            }
+                            Card(
+                                colors = CardDefaults.cardColors(containerColor = Color(0xFFFFF7ED)),
+                                shape = RoundedCornerShape(12.dp),
+                                border = BorderStroke(1.dp, Color(0xFFFED7AA)),
+                                modifier = Modifier.weight(1f)
+                            ) {
+                                Column(modifier = Modifier.padding(8.dp)) {
+                                    Text("Status Open", fontSize = 9.5.sp, color = Color(0xFF9A3412))
+                                    Text("$openCasesCount Kasus", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = Color(0xFFEA580C))
+                                }
+                            }
+                            Card(
+                                colors = CardDefaults.cardColors(containerColor = Color(0xFFF0FDF4)),
+                                shape = RoundedCornerShape(12.dp),
+                                border = BorderStroke(1.dp, Color(0xFFBBF7D0)),
+                                modifier = Modifier.weight(1f)
+                            ) {
+                                Column(modifier = Modifier.padding(8.dp)) {
+                                    Text("Status Done", fontSize = 9.5.sp, color = Color(0xFF166534))
+                                    Text("$doneCasesCount Kasus", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = Color(0xFF16A34A))
                                 }
                             }
                             Card(
@@ -6773,19 +8007,9 @@ fun AbnormalityScreen(
                                 shape = RoundedCornerShape(12.dp),
                                 modifier = Modifier.weight(1f)
                             ) {
-                                Column(modifier = Modifier.padding(10.dp)) {
-                                    Text("Akumulasi RPN", fontSize = 10.sp, color = Color(0xFF991B1B))
-                                    Text("$totalAccRpn", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = BrandRed)
-                                }
-                            }
-                            Card(
-                                colors = CardDefaults.cardColors(containerColor = Color(0xFFFEF3C7)),
-                                shape = RoundedCornerShape(12.dp),
-                                modifier = Modifier.weight(1f)
-                            ) {
-                                Column(modifier = Modifier.padding(10.dp)) {
-                                    Text("Rata-rata RPN", fontSize = 10.sp, color = Color(0xFF92400E))
-                                    Text("$avgAccRpn", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = BrandOrange)
+                                Column(modifier = Modifier.padding(8.dp)) {
+                                    Text("Total RPN", fontSize = 9.5.sp, color = Color(0xFF991B1B))
+                                    Text("$totalAccRpn", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = BrandRed)
                                 }
                             }
                         }
@@ -6806,6 +8030,7 @@ fun AbnormalityScreen(
                     Pair(7, "Motor")
                 )
 
+                val nowMillis = System.currentTimeMillis()
                 val reportRows = standardComponents.map { (no, name) ->
                     val matched = filteredReports.filter {
                         it.title.contains(name, ignoreCase = true) || it.description.contains(name, ignoreCase = true)
@@ -6819,6 +8044,18 @@ fun AbnormalityScreen(
                         modes.isNotEmpty() -> modes.joinToString(", ")
                         else -> "${matched.size}x temuan"
                     }
+                    val openCases = matched.count { it.status.equals("Open", ignoreCase = true) }
+                    val doneCases = matched.count { it.status.equals("Done", ignoreCase = true) }
+                    val leadTimes = matched.map { r ->
+                        val endMillis = if (!r.status.equals("Open", ignoreCase = true) && r.resolvedTimestamp > 0L) {
+                            r.resolvedTimestamp
+                        } else {
+                            nowMillis
+                        }
+                        maxOf(0L, (endMillis - r.timestamp) / (24L * 3600 * 1000L))
+                    }
+                    val avgLead = if (leadTimes.isNotEmpty()) leadTimes.average() else 0.0
+                    val maxLead = leadTimes.maxOrNull() ?: 0L
                     ReportRowAccumulation(
                         no = no,
                         component = name,
@@ -6827,7 +8064,11 @@ fun AbnormalityScreen(
                         totalOccurrence = matched.sumOf { it.occurrenceScore },
                         totalDetection = matched.sumOf { it.detectionScore },
                         totalRpn = matched.sumOf { it.rpn },
-                        count = matched.size
+                        count = matched.size,
+                        openCount = openCases,
+                        doneCount = doneCases,
+                        avgLeadTimeDays = avgLead,
+                        maxLeadTimeDays = maxLead
                     )
                 }.toMutableList()
 
@@ -6847,6 +8088,18 @@ fun AbnormalityScreen(
                     customModes.isNotEmpty() -> customModes.joinToString(", ")
                     else -> "${nonStandardReports.size}x temuan"
                 }
+                val customOpenCases = nonStandardReports.count { it.status.equals("Open", ignoreCase = true) }
+                val customDoneCases = nonStandardReports.count { it.status.equals("Done", ignoreCase = true) }
+                val customLeadTimes = nonStandardReports.map { r ->
+                    val endMillis = if (!r.status.equals("Open", ignoreCase = true) && r.resolvedTimestamp > 0L) {
+                        r.resolvedTimestamp
+                    } else {
+                        nowMillis
+                    }
+                    maxOf(0L, (endMillis - r.timestamp) / (24L * 3600 * 1000L))
+                }
+                val customAvgLead = if (customLeadTimes.isNotEmpty()) customLeadTimes.average() else 0.0
+                val customMaxLead = customLeadTimes.maxOrNull() ?: 0L
                 reportRows.add(
                     ReportRowAccumulation(
                         no = 8,
@@ -6856,15 +8109,27 @@ fun AbnormalityScreen(
                         totalOccurrence = nonStandardReports.sumOf { it.occurrenceScore },
                         totalDetection = nonStandardReports.sumOf { it.detectionScore },
                         totalRpn = nonStandardReports.sumOf { it.rpn },
-                        count = nonStandardReports.size
+                        count = nonStandardReports.size,
+                        openCount = customOpenCases,
+                        doneCount = customDoneCases,
+                        avgLeadTimeDays = customAvgLead,
+                        maxLeadTimeDays = customMaxLead
                     )
                 )
 
-                val sumAllSeverity = reportRows.sumOf { it.totalSeverity }
-                val sumAllOccurrence = reportRows.sumOf { it.totalOccurrence }
-                val sumAllDetection = reportRows.sumOf { it.totalDetection }
                 val sumAllRpn = reportRows.sumOf { it.totalRpn }
                 val sumAllCount = reportRows.sumOf { it.count }
+                val sumAllOpen = reportRows.sumOf { it.openCount }
+                val sumAllDone = reportRows.sumOf { it.doneCount }
+                val allReportLeadTimes = filteredReports.map { r ->
+                    val endMillis = if (!r.status.equals("Open", ignoreCase = true) && r.resolvedTimestamp > 0L) {
+                        r.resolvedTimestamp
+                    } else {
+                        nowMillis
+                    }
+                    maxOf(0L, (endMillis - r.timestamp) / (24L * 3600 * 1000L))
+                }
+                val totalOverallAvgLead = if (allReportLeadTimes.isNotEmpty()) allReportLeadTimes.average() else 0.0
 
                 Card(
                     colors = CardDefaults.cardColors(containerColor = Color.White),
@@ -6898,10 +8163,10 @@ fun AbnormalityScreen(
                         }
 
                         Row(modifier = Modifier.fillMaxWidth()) {
-                            // 1. FREEZE PANE REPORT (Kolom No & Komponen tetap berada di posisi kiri saat di-scroll)
+                            // 1. FREEZE PANE REPORT (Kolom No & Komponen disempitkan agar area scrollable lebih luas)
                             Column(
                                 modifier = Modifier
-                                    .width(150.dp)
+                                    .width(100.dp)
                                     .background(Color.White)
                                     .drawBehind {
                                         drawLine(
@@ -6918,11 +8183,11 @@ fun AbnormalityScreen(
                                         .fillMaxWidth()
                                         .height(44.dp)
                                         .background(Color(0xFF1E293B))
-                                        .padding(horizontal = 8.dp),
+                                        .padding(horizontal = 6.dp),
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
-                                    Text("No", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color.White, modifier = Modifier.width(28.dp), textAlign = TextAlign.Center)
-                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Text("No", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color.White, modifier = Modifier.width(20.dp), textAlign = TextAlign.Center)
+                                    Spacer(modifier = Modifier.width(3.dp))
                                     Text("Komponen", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color.White, modifier = Modifier.weight(1f))
                                 }
 
@@ -6936,25 +8201,25 @@ fun AbnormalityScreen(
                                             .fillMaxWidth()
                                             .height(52.dp)
                                             .background(if (isEven) Color.White else Color(0xFFF8FAFC))
-                                            .padding(horizontal = 8.dp),
+                                            .padding(horizontal = 6.dp),
                                         verticalAlignment = Alignment.CenterVertically
                                     ) {
                                         Text(
                                             text = row.no.toString(),
-                                            fontSize = 12.sp,
+                                            fontSize = 11.sp,
                                             fontWeight = FontWeight.Bold,
                                             color = SlateGrey,
-                                            modifier = Modifier.width(28.dp),
+                                            modifier = Modifier.width(20.dp),
                                             textAlign = TextAlign.Center
                                         )
-                                        Spacer(modifier = Modifier.width(4.dp))
+                                        Spacer(modifier = Modifier.width(3.dp))
                                         Text(
                                             text = row.component,
-                                            fontSize = 12.sp,
+                                            fontSize = 11.sp,
                                             fontWeight = FontWeight.SemiBold,
                                             color = Color.Black,
                                             modifier = Modifier.weight(1f),
-                                            maxLines = 1,
+                                            maxLines = 2,
                                             overflow = TextOverflow.Ellipsis
                                         )
                                     }
@@ -6970,21 +8235,21 @@ fun AbnormalityScreen(
                                         .fillMaxWidth()
                                         .height(48.dp)
                                         .background(Color(0xFF0F172A))
-                                        .padding(horizontal = 8.dp),
+                                        .padding(horizontal = 6.dp),
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
                                     Text(
                                         text = "∑",
-                                        fontSize = 13.sp,
+                                        fontSize = 12.sp,
                                         fontWeight = FontWeight.Bold,
                                         color = Color.White,
-                                        modifier = Modifier.width(28.dp),
+                                        modifier = Modifier.width(20.dp),
                                         textAlign = TextAlign.Center
                                     )
-                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Spacer(modifier = Modifier.width(3.dp))
                                     Text(
                                         text = "TOTAL",
-                                        fontSize = 12.sp,
+                                        fontSize = 11.sp,
                                         fontWeight = FontWeight.Bold,
                                         color = Color.White,
                                         modifier = Modifier.weight(1f)
@@ -6999,7 +8264,7 @@ fun AbnormalityScreen(
                                     .horizontalScroll(rememberScrollState())
                             ) {
                                 Column(modifier = Modifier.background(Color.White)) {
-                                    // Header Kolom Scrollable (RPN dan Jml Temuan ditempatkan setelah kolom Komponen)
+                                    // Header Kolom Scrollable (RPN, Jml Temuan, Status Open/Done, Lead Time, Failure Mode)
                                     Row(
                                         modifier = Modifier
                                             .height(44.dp)
@@ -7008,11 +8273,10 @@ fun AbnormalityScreen(
                                         verticalAlignment = Alignment.CenterVertically
                                     ) {
                                         Text("Risk Priority Number (RPN)", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color.White, modifier = Modifier.width(160.dp), textAlign = TextAlign.Center)
-                                        Text("Jml Temuan", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color.White, modifier = Modifier.width(100.dp), textAlign = TextAlign.Center)
-                                        Text("Failure Mode", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color.White, modifier = Modifier.width(185.dp))
-                                        Text("Level Severity (Total)", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color.White, modifier = Modifier.width(135.dp), textAlign = TextAlign.Center)
-                                        Text("Occurence (Total)", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color.White, modifier = Modifier.width(145.dp), textAlign = TextAlign.Center)
-                                        Text("Detection (Total)", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color.White, modifier = Modifier.width(135.dp), textAlign = TextAlign.Center)
+                                        Text("Jml Temuan", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color.White, modifier = Modifier.width(95.dp), textAlign = TextAlign.Center)
+                                        Text("Status (Open / Done)", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color.White, modifier = Modifier.width(175.dp), textAlign = TextAlign.Center)
+                                        Text("Lead Time (Hari)", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color.White, modifier = Modifier.width(120.dp), textAlign = TextAlign.Center)
+                                        Text("Failure Mode", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color.White, modifier = Modifier.width(220.dp))
                                     }
 
                                     HorizontalDivider(color = Color(0xFFE2E8F0), thickness = 1.dp)
@@ -7057,7 +8321,7 @@ fun AbnormalityScreen(
                                             }
 
                                             // 2. Jml Temuan
-                                            Box(modifier = Modifier.width(100.dp), contentAlignment = Alignment.Center) {
+                                            Box(modifier = Modifier.width(95.dp), contentAlignment = Alignment.Center) {
                                                 Surface(
                                                     color = if (row.count > 0) Color(0xFFE2E8F0) else Color(0xFFF8FAFC),
                                                     shape = RoundedCornerShape(6.dp)
@@ -7072,66 +8336,141 @@ fun AbnormalityScreen(
                                                 }
                                             }
 
-                                            // 3. Failure Mode
+                                            // 3. Status (Open / Done) - Kolom baru setelah Jml Temuan
+                                            Box(modifier = Modifier.width(175.dp), contentAlignment = Alignment.Center) {
+                                                if (row.count == 0) {
+                                                    Text("-", fontSize = 11.sp, color = Color.LightGray, fontWeight = FontWeight.Bold)
+                                                } else {
+                                                    Row(
+                                                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                                        verticalAlignment = Alignment.CenterVertically
+                                                    ) {
+                                                        // Open badge
+                                                        Surface(
+                                                            color = if (row.openCount > 0) Color(0xFFFFF7ED) else Color(0xFFF8FAFC),
+                                                            shape = RoundedCornerShape(6.dp),
+                                                            border = BorderStroke(1.dp, if (row.openCount > 0) Color(0xFFFDBA74) else Color(0xFFE2E8F0))
+                                                        ) {
+                                                            Row(
+                                                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 3.dp),
+                                                                verticalAlignment = Alignment.CenterVertically,
+                                                                horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                                            ) {
+                                                                Box(
+                                                                    modifier = Modifier
+                                                                        .size(6.dp)
+                                                                        .clip(CircleShape)
+                                                                        .background(if (row.openCount > 0) Color(0xFFEA580C) else Color(0xFF94A3B8))
+                                                                )
+                                                                Text(
+                                                                    text = "${row.openCount} Open",
+                                                                    fontSize = 10.5.sp,
+                                                                    fontWeight = FontWeight.Bold,
+                                                                    color = if (row.openCount > 0) Color(0xFFC2410C) else Color(0xFF64748B)
+                                                                )
+                                                            }
+                                                        }
+
+                                                        // Done badge
+                                                        Surface(
+                                                            color = if (row.doneCount > 0) Color(0xFFF0FDF4) else Color(0xFFF8FAFC),
+                                                            shape = RoundedCornerShape(6.dp),
+                                                            border = BorderStroke(1.dp, if (row.doneCount > 0) Color(0xFF86EFAC) else Color(0xFFE2E8F0))
+                                                        ) {
+                                                            Row(
+                                                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 3.dp),
+                                                                verticalAlignment = Alignment.CenterVertically,
+                                                                horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                                            ) {
+                                                                Box(
+                                                                    modifier = Modifier
+                                                                        .size(6.dp)
+                                                                        .clip(CircleShape)
+                                                                        .background(if (row.doneCount > 0) Color(0xFF16A34A) else Color(0xFF94A3B8))
+                                                                )
+                                                                Text(
+                                                                    text = "${row.doneCount} Done",
+                                                                    fontSize = 10.5.sp,
+                                                                    fontWeight = FontWeight.Bold,
+                                                                    color = if (row.doneCount > 0) Color(0xFF15803D) else Color(0xFF64748B)
+                                                                )
+                                                            }
+                                                        }
+                                                    }
+                                                }
+                                            }
+
+                                            // 4. Lead Time (Hari) - Kolom baru setelah Status
+                                            Box(modifier = Modifier.width(120.dp), contentAlignment = Alignment.Center) {
+                                                if (row.count == 0) {
+                                                    Text("-", fontSize = 11.sp, color = Color.LightGray, fontWeight = FontWeight.Bold)
+                                                } else {
+                                                    val leadDisplay = if (row.count == 1) {
+                                                        "${row.maxLeadTimeDays} hari"
+                                                    } else {
+                                                        val formattedAvg = String.format(java.util.Locale.US, "%.1f", row.avgLeadTimeDays).removeSuffix(".0")
+                                                        "$formattedAvg hari"
+                                                    }
+                                                    val isLongLead = row.maxLeadTimeDays >= 7L
+                                                    val isMediumLead = row.maxLeadTimeDays in 3L..6L
+                                                    Surface(
+                                                        color = when {
+                                                            isLongLead -> Color(0xFFFEE2E2)
+                                                            isMediumLead -> Color(0xFFFEF3C7)
+                                                            else -> Color(0xFFF0FDF4)
+                                                        },
+                                                        shape = RoundedCornerShape(6.dp),
+                                                        border = BorderStroke(
+                                                            1.dp,
+                                                            when {
+                                                                isLongLead -> Color(0xFFFCA5A5)
+                                                                isMediumLead -> Color(0xFFFCD34D)
+                                                                else -> Color(0xFF86EFAC)
+                                                            }
+                                                        )
+                                                    ) {
+                                                        Row(
+                                                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
+                                                            verticalAlignment = Alignment.CenterVertically,
+                                                            horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                                        ) {
+                                                            Icon(
+                                                                imageVector = Icons.Default.Schedule,
+                                                                contentDescription = null,
+                                                                tint = when {
+                                                                    isLongLead -> Color(0xFFDC2626)
+                                                                    isMediumLead -> Color(0xFFD97706)
+                                                                    else -> Color(0xFF15803D)
+                                                                },
+                                                                modifier = Modifier.size(12.dp)
+                                                            )
+                                                            Text(
+                                                                text = leadDisplay,
+                                                                fontSize = 11.sp,
+                                                                fontWeight = FontWeight.Bold,
+                                                                color = when {
+                                                                    isLongLead -> Color(0xFFDC2626)
+                                                                    isMediumLead -> Color(0xFFB45309)
+                                                                    else -> Color(0xFF15803D)
+                                                                }
+                                                            )
+                                                        }
+                                                    }
+                                                }
+                                            }
+
+                                            // 5. Failure Mode
                                             Text(
                                                 text = row.failureModesSummary,
                                                 fontSize = 11.sp,
                                                 color = if (row.count > 0) Color.Black else Color.Gray,
                                                 fontWeight = if (row.count > 0) FontWeight.SemiBold else FontWeight.Normal,
                                                 modifier = Modifier
-                                                    .width(185.dp)
+                                                    .width(220.dp)
                                                     .padding(end = 8.dp),
                                                 maxLines = 2,
                                                 overflow = TextOverflow.Ellipsis
                                             )
-
-                                            // 4. Level Severity (Total)
-                                            Box(modifier = Modifier.width(135.dp), contentAlignment = Alignment.Center) {
-                                                Surface(
-                                                    color = if (row.totalSeverity > 0) BrandGreenLight else Color(0xFFF1F5F9),
-                                                    shape = RoundedCornerShape(6.dp)
-                                                ) {
-                                                    Text(
-                                                        text = row.totalSeverity.toString(),
-                                                        fontSize = 12.sp,
-                                                        fontWeight = FontWeight.Bold,
-                                                        color = if (row.totalSeverity > 0) BrandGreen else Color.Gray,
-                                                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp)
-                                                    )
-                                                }
-                                            }
-
-                                            // 5. Occurence (Total)
-                                            Box(modifier = Modifier.width(145.dp), contentAlignment = Alignment.Center) {
-                                                Surface(
-                                                    color = if (row.totalOccurrence > 0) Color(0xFFFEF3C7) else Color(0xFFF1F5F9),
-                                                    shape = RoundedCornerShape(6.dp)
-                                                ) {
-                                                    Text(
-                                                        text = row.totalOccurrence.toString(),
-                                                        fontSize = 12.sp,
-                                                        fontWeight = FontWeight.Bold,
-                                                        color = if (row.totalOccurrence > 0) Color(0xFFB45309) else Color.Gray,
-                                                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp)
-                                                    )
-                                                }
-                                            }
-
-                                            // 6. Detection (Total)
-                                            Box(modifier = Modifier.width(135.dp), contentAlignment = Alignment.Center) {
-                                                Surface(
-                                                    color = if (row.totalDetection > 0) Color(0xFFE0E7FF) else Color(0xFFF1F5F9),
-                                                    shape = RoundedCornerShape(6.dp)
-                                                ) {
-                                                    Text(
-                                                        text = row.totalDetection.toString(),
-                                                        fontSize = 12.sp,
-                                                        fontWeight = FontWeight.Bold,
-                                                        color = if (row.totalDetection > 0) Color(0xFF3730A3) else Color.Gray,
-                                                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp)
-                                                    )
-                                                }
-                                            }
                                         }
                                         if (idx < reportRows.size - 1) {
                                             HorizontalDivider(color = Color(0xFFF1F5F9), thickness = 1.dp)
@@ -7164,33 +8503,83 @@ fun AbnormalityScreen(
                                         }
 
                                         // 2. Total Jml Temuan
-                                        Box(modifier = Modifier.width(100.dp), contentAlignment = Alignment.Center) {
+                                        Box(modifier = Modifier.width(95.dp), contentAlignment = Alignment.Center) {
                                             Text("${sumAllCount}x", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color.White)
                                         }
 
-                                        // 3. Failure Mode label
+                                        // 3. Total Status Open & Done
+                                        Box(modifier = Modifier.width(175.dp), contentAlignment = Alignment.Center) {
+                                            Row(
+                                                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                                verticalAlignment = Alignment.CenterVertically
+                                            ) {
+                                                Surface(
+                                                    color = Color(0xFFEA580C),
+                                                    shape = RoundedCornerShape(4.dp)
+                                                ) {
+                                                    Text(
+                                                        text = "$sumAllOpen Open",
+                                                        fontSize = 10.5.sp,
+                                                        fontWeight = FontWeight.Bold,
+                                                        color = Color.White,
+                                                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                                    )
+                                                }
+                                                Surface(
+                                                    color = Color(0xFF16A34A),
+                                                    shape = RoundedCornerShape(4.dp)
+                                                ) {
+                                                    Text(
+                                                        text = "$sumAllDone Done",
+                                                        fontSize = 10.5.sp,
+                                                        fontWeight = FontWeight.Bold,
+                                                        color = Color.White,
+                                                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                                    )
+                                                }
+                                            }
+                                        }
+
+                                        // 4. Total Lead Time (Rata-rata lead time seluruh temuan)
+                                        Box(modifier = Modifier.width(120.dp), contentAlignment = Alignment.Center) {
+                                            if (sumAllCount == 0) {
+                                                Text("-", fontSize = 11.sp, color = Color.White)
+                                            } else {
+                                                val formattedTotalAvg = String.format(java.util.Locale.US, "%.1f", totalOverallAvgLead).removeSuffix(".0")
+                                                Surface(
+                                                    color = Color.White.copy(alpha = 0.15f),
+                                                    shape = RoundedCornerShape(4.dp)
+                                                ) {
+                                                    Row(
+                                                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                                                        verticalAlignment = Alignment.CenterVertically,
+                                                        horizontalArrangement = Arrangement.spacedBy(3.dp)
+                                                    ) {
+                                                        Icon(
+                                                            imageVector = Icons.Default.Schedule,
+                                                            contentDescription = null,
+                                                            tint = Color.White,
+                                                            modifier = Modifier.size(11.dp)
+                                                        )
+                                                        Text(
+                                                            text = "$formattedTotalAvg hari",
+                                                            fontSize = 10.5.sp,
+                                                            fontWeight = FontWeight.Bold,
+                                                            color = Color.White
+                                                        )
+                                                    }
+                                                }
+                                            }
+                                        }
+
+                                        // 5. Failure Mode label
                                         Text(
                                             text = "Semua Komponen",
                                             fontSize = 11.sp,
                                             fontWeight = FontWeight.Bold,
                                             color = Color.White,
-                                            modifier = Modifier.width(185.dp)
+                                            modifier = Modifier.width(220.dp)
                                         )
-
-                                        // 4. Total Severity
-                                        Box(modifier = Modifier.width(135.dp), contentAlignment = Alignment.Center) {
-                                            Text(sumAllSeverity.toString(), fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color.White)
-                                        }
-
-                                        // 5. Total Occurence
-                                        Box(modifier = Modifier.width(145.dp), contentAlignment = Alignment.Center) {
-                                            Text(sumAllOccurrence.toString(), fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color.White)
-                                        }
-
-                                        // 6. Total Detection
-                                        Box(modifier = Modifier.width(135.dp), contentAlignment = Alignment.Center) {
-                                            Text(sumAllDetection.toString(), fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color.White)
-                                        }
                                     }
                                 }
                             }
@@ -7201,12 +8590,20 @@ fun AbnormalityScreen(
 
             // 3. DETAIL RINCIAN RIWAYAT LAPORAN YANG MEMBENTUK AKUMULASI
             item {
-                Text(
-                    text = "Rincian Data Laporan ($periodDisplayLabel • $selectedReportMachine) :",
-                    fontSize = 13.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = SlateGrey
-                )
+                Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                    Text(
+                        text = "Rincian Data Laporan ($periodDisplayLabel • $selectedReportMachine) :",
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = SlateGrey
+                    )
+                    Text(
+                        text = "Diurutkan: Status Open teratas & RPN tertinggi",
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Medium,
+                        color = Color(0xFFC2410C)
+                    )
+                }
             }
 
             if (filteredReports.isEmpty()) {
@@ -7256,14 +8653,20 @@ fun AbnormalityScreen(
                 }
             } else {
                 items(filteredReports) { r ->
+                    val isOpen = r.status.equals("Open", ignoreCase = true)
+                    val endMillis = if (!isOpen && r.resolvedTimestamp > 0L) r.resolvedTimestamp else System.currentTimeMillis()
+                    val leadTimeDays = maxOf(0L, (endMillis - r.timestamp) / (24L * 60 * 60 * 1000L))
+                    val leadTimeText = if (leadTimeDays == 0L) "0 hari (Hari ini)" else "$leadTimeDays hari"
+
                     Card(
                         colors = CardDefaults.cardColors(containerColor = Color.White),
                         shape = RoundedCornerShape(16.dp),
-                        border = BorderStroke(1.dp, Color(0xFFF1F5F9)),
+                        border = BorderStroke(1.dp, if (isOpen) Color(0xFFFED7AA) else Color(0xFFF1F5F9)),
                         elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
                         modifier = Modifier.fillMaxWidth()
                     ) {
                         Column(modifier = Modifier.padding(14.dp)) {
+                            // Row 1: Judul, Waktu Temuan, RPN
                             Row(
                                 modifier = Modifier.fillMaxWidth(),
                                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -7272,7 +8675,7 @@ fun AbnormalityScreen(
                                 Column(modifier = Modifier.weight(1f)) {
                                     Text(r.title, fontWeight = FontWeight.Bold, fontSize = 13.sp, color = SlateGrey)
                                     Text(
-                                        WibDateUtils.format("dd MMM yyyy, HH:mm", r.timestamp) + " WIB",
+                                        WibDateUtils.format("dd MMM yyyy, HH:mm", r.timestamp) + " WIB • ${r.picName}",
                                         fontSize = 10.sp,
                                         color = Color.Black
                                     )
@@ -7290,9 +8693,94 @@ fun AbnormalityScreen(
                                     )
                                 }
                             }
-                            Spacer(modifier = Modifier.height(6.dp))
-                            Text(r.description, fontSize = 11.sp, color = Color.Black)
-                            Spacer(modifier = Modifier.height(6.dp))
+
+                            Spacer(modifier = Modifier.height(8.dp))
+
+                            // Row 2: Status & Lead Time Banner
+                            Surface(
+                                shape = RoundedCornerShape(10.dp),
+                                color = if (isOpen) Color(0xFFFFF7ED) else Color(0xFFF0FDF4),
+                                border = BorderStroke(1.dp, if (isOpen) Color(0xFFFDBA74) else Color(0xFF86EFAC)),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Column(
+                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
+                                    verticalArrangement = Arrangement.spacedBy(4.dp)
+                                ) {
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        // Status Chip
+                                        Row(
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                        ) {
+                                            Icon(
+                                                imageVector = if (isOpen) Icons.Default.HourglassTop else Icons.Default.CheckCircle,
+                                                contentDescription = null,
+                                                tint = if (isOpen) Color(0xFFEA580C) else Color(0xFF16A34A),
+                                                modifier = Modifier.size(16.dp)
+                                            )
+                                            Text(
+                                                text = if (isOpen) "Status: Open (Belum Selesai)" else "Status: Done (Selesai)",
+                                                fontSize = 11.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                color = if (isOpen) Color(0xFFC2410C) else Color(0xFF15803D)
+                                            )
+                                        }
+
+                                        // Lead Time Chip
+                                        Surface(
+                                            shape = RoundedCornerShape(6.dp),
+                                            color = if (isOpen) Color(0xFFFFEDD5) else Color(0xFFDCFCE7)
+                                        ) {
+                                            Text(
+                                                text = if (isOpen) "Lead Time: $leadTimeText" else "Selesai dlm: $leadTimeText",
+                                                fontSize = 10.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                color = if (isOpen) Color(0xFF9A3412) else Color(0xFF166534),
+                                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                            )
+                                        }
+                                    }
+
+                                    // Jika status Done, tampilkan nama mekanik yang melakukan perbaikan
+                                    if (!isOpen) {
+                                        Row(
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Default.Build,
+                                                contentDescription = null,
+                                                tint = Color(0xFF15803D),
+                                                modifier = Modifier.size(14.dp)
+                                            )
+                                            Text(
+                                                text = "Mekanik Perbaikan: ${r.mechanicName.ifBlank { "-" }}",
+                                                fontSize = 11.sp,
+                                                fontWeight = FontWeight.SemiBold,
+                                                color = Color(0xFF166534)
+                                            )
+                                        }
+                                        if (r.repairNotes.isNotBlank()) {
+                                            Text(
+                                                text = "Tindakan: ${r.repairNotes}",
+                                                fontSize = 10.sp,
+                                                color = Color.DarkGray,
+                                                modifier = Modifier.padding(start = 20.dp)
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Text(r.description, fontSize = 11.5.sp, color = Color.Black)
+                            Spacer(modifier = Modifier.height(8.dp))
+
                             Row(
                                 modifier = Modifier.fillMaxWidth(),
                                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -7303,8 +8791,60 @@ fun AbnormalityScreen(
                                     fontSize = 10.sp,
                                     color = Color.DarkGray
                                 )
-                                IconButton(onClick = { onDeleteReport(r) }, modifier = Modifier.size(24.dp)) {
-                                    Icon(imageVector = Icons.Default.Delete, contentDescription = "Delete", tint = Color.Gray, modifier = Modifier.size(16.dp))
+
+                                Row(
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    if (isOpen) {
+                                        Button(
+                                            onClick = {
+                                                dialogSelectedStatus = "Done"
+                                                dialogMechanicName = r.mechanicName
+                                                dialogRepairNotes = r.repairNotes
+                                                reportToUpdateStatus = r
+                                            },
+                                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF16A34A)),
+                                            shape = RoundedCornerShape(8.dp),
+                                            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
+                                            modifier = Modifier.height(32.dp)
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Default.Check,
+                                                contentDescription = null,
+                                                tint = Color.White,
+                                                modifier = Modifier.size(14.dp)
+                                            )
+                                            Spacer(modifier = Modifier.width(4.dp))
+                                            Text("Selesaikan (Done)", fontSize = 10.5.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                                        }
+                                    } else {
+                                        OutlinedButton(
+                                            onClick = {
+                                                dialogSelectedStatus = r.status
+                                                dialogMechanicName = r.mechanicName
+                                                dialogRepairNotes = r.repairNotes
+                                                reportToUpdateStatus = r
+                                            },
+                                            shape = RoundedCornerShape(8.dp),
+                                            border = BorderStroke(1.dp, BrandGreen),
+                                            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
+                                            modifier = Modifier.height(32.dp)
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Default.Edit,
+                                                contentDescription = null,
+                                                tint = BrandGreen,
+                                                modifier = Modifier.size(14.dp)
+                                            )
+                                            Spacer(modifier = Modifier.width(4.dp))
+                                            Text("Edit Status", fontSize = 10.5.sp, fontWeight = FontWeight.Bold, color = BrandGreen)
+                                        }
+                                    }
+
+                                    IconButton(onClick = { onDeleteReport(r) }, modifier = Modifier.size(28.dp)) {
+                                        Icon(imageVector = Icons.Default.Delete, contentDescription = "Delete", tint = Color.Gray, modifier = Modifier.size(16.dp))
+                                    }
                                 }
                             }
                         }
@@ -7312,6 +8852,266 @@ fun AbnormalityScreen(
                 }
             }
         }
+    }
+
+    // Dialog Update Status Abnormality (Open <-> Done, Lead Time & Nama Mekanik)
+    if (reportToUpdateStatus != null) {
+            val rep = reportToUpdateStatus!!
+            val currentLeadTime = remember(rep) {
+                val endMillis = if (rep.status.equals("Done", ignoreCase = true) && rep.resolvedTimestamp > 0L) {
+                    rep.resolvedTimestamp
+                } else {
+                    System.currentTimeMillis()
+                }
+                maxOf(0L, (endMillis - rep.timestamp) / (24L * 60 * 60 * 1000L))
+            }
+
+            AlertDialog(
+                onDismissRequest = { reportToUpdateStatus = null },
+                icon = {
+                    Icon(
+                        imageVector = Icons.Default.Build,
+                        contentDescription = "Update Status",
+                        tint = BrandGreen,
+                        modifier = Modifier.size(28.dp)
+                    )
+                },
+                title = {
+                    Column {
+                        Text(
+                            text = "Update Status Abnormality",
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 15.sp,
+                            color = SlateGrey
+                        )
+                        Text(
+                            text = rep.title,
+                            fontSize = 11.5.sp,
+                            fontWeight = FontWeight.Medium,
+                            color = Color.Gray
+                        )
+                    }
+                },
+                text = {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .verticalScroll(rememberScrollState()),
+                        verticalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        // Lead Time Info Box
+                        Surface(
+                            color = if (rep.status.equals("Open", ignoreCase = true)) Color(0xFFFFF7ED) else Color(0xFFF0FDF4),
+                            shape = RoundedCornerShape(10.dp),
+                            border = BorderStroke(1.dp, if (rep.status.equals("Open", ignoreCase = true)) Color(0xFFFDBA74) else Color(0xFF86EFAC)),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(10.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                Icon(
+                                    imageVector = if (rep.status.equals("Open", ignoreCase = true)) Icons.Default.HourglassTop else Icons.Default.CheckCircle,
+                                    contentDescription = null,
+                                    tint = if (rep.status.equals("Open", ignoreCase = true)) Color(0xFFC2410C) else Color(0xFF15803D),
+                                    modifier = Modifier.size(20.dp)
+                                )
+                                Column {
+                                    Text(
+                                        text = if (rep.status.equals("Open", ignoreCase = true)) "Status Saat Ini: Open (Belum Selesai)" else "Status Saat Ini: Done (Selesai)",
+                                        fontSize = 11.5.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = if (rep.status.equals("Open", ignoreCase = true)) Color(0xFFC2410C) else Color(0xFF15803D)
+                                    )
+                                    Text(
+                                        text = "Lead Time: ${if (currentLeadTime == 0L) "0 hari (Hari ini)" else "$currentLeadTime hari"}",
+                                        fontSize = 11.sp,
+                                        color = Color.DarkGray
+                                    )
+                                }
+                            }
+                        }
+
+                        // Pilihan Status: Open vs Done
+                        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                            Text(
+                                text = "Pilih Status Abnormality :",
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = SlateGrey
+                            )
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                // Option Open
+                                val isOpenSelected = dialogSelectedStatus.equals("Open", ignoreCase = true)
+                                Box(
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .clip(RoundedCornerShape(10.dp))
+                                        .background(if (isOpenSelected) Color(0xFFFFF7ED) else Color(0xFFF8FAFC))
+                                        .border(
+                                            width = if (isOpenSelected) 2.dp else 1.dp,
+                                            color = if (isOpenSelected) Color(0xFFEA580C) else Color(0xFFCBD5E1),
+                                            shape = RoundedCornerShape(10.dp)
+                                        )
+                                        .clickable { dialogSelectedStatus = "Open" }
+                                        .padding(vertical = 10.dp, horizontal = 8.dp),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.HourglassTop,
+                                            contentDescription = null,
+                                            tint = if (isOpenSelected) Color(0xFFEA580C) else Color.Gray,
+                                            modifier = Modifier.size(16.dp)
+                                        )
+                                        Text(
+                                            text = "Open",
+                                            fontSize = 12.5.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = if (isOpenSelected) Color(0xFFEA580C) else Color.DarkGray
+                                        )
+                                    }
+                                }
+
+                                // Option Done
+                                val isDoneSelected = dialogSelectedStatus.equals("Done", ignoreCase = true)
+                                Box(
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .clip(RoundedCornerShape(10.dp))
+                                        .background(if (isDoneSelected) Color(0xFFF0FDF4) else Color(0xFFF8FAFC))
+                                    .border(
+                                        width = if (isDoneSelected) 2.dp else 1.dp,
+                                        color = if (isDoneSelected) Color(0xFF16A34A) else Color(0xFFCBD5E1),
+                                        shape = RoundedCornerShape(10.dp)
+                                    )
+                                    .clickable { dialogSelectedStatus = "Done" }
+                                    .padding(vertical = 10.dp, horizontal = 8.dp),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.CheckCircle,
+                                        contentDescription = null,
+                                        tint = if (isDoneSelected) Color(0xFF16A34A) else Color.Gray,
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                    Text(
+                                        text = "Done",
+                                        fontSize = 12.5.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = if (isDoneSelected) Color(0xFF16A34A) else Color.DarkGray
+                                    )
+                                }
+                            }
+                        }
+                    }
+
+                    // Jika status Done, tampilkan kolom Nama Mekanik yang melakukan perbaikan (diisi dengan input nama saja dengan cara diketik)
+                    if (dialogSelectedStatus.equals("Done", ignoreCase = true)) {
+                        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                            Text(
+                                text = "Nama Mekanik yang Melakukan Perbaikan : *",
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = SlateGrey
+                            )
+
+                            OutlinedTextField(
+                                value = dialogMechanicName,
+                                onValueChange = { dialogMechanicName = it },
+                                placeholder = { Text("Ketik nama mekanik...", fontSize = 12.sp) },
+                                leadingIcon = {
+                                    Icon(Icons.Default.Person, contentDescription = null, tint = BrandGreen, modifier = Modifier.size(18.dp))
+                                },
+                                supportingText = {
+                                    Text("Masukkan nama mekanik/teknisi yang melakukan perbaikan", fontSize = 10.5.sp, color = Color.Gray)
+                                },
+                                singleLine = true,
+                                modifier = Modifier.fillMaxWidth(),
+                                textStyle = TextStyle(fontSize = 12.5.sp, color = Color.Black),
+                                colors = OutlinedTextFieldDefaults.colors(
+                                    focusedBorderColor = BrandGreen,
+                                    unfocusedBorderColor = Color(0xFFCBD5E1)
+                                )
+                            )
+                        }
+
+                        // Catatan Perbaikan
+                        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                            Text(
+                                text = "Catatan / Tindakan Perbaikan (Opsional) :",
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Medium,
+                                color = SlateGrey
+                            )
+                            OutlinedTextField(
+                                value = dialogRepairNotes,
+                                onValueChange = { dialogRepairNotes = it },
+                                placeholder = { Text("Contoh: Penggantian seal & balancing bowl", fontSize = 11.sp) },
+                                maxLines = 3,
+                                modifier = Modifier.fillMaxWidth(),
+                                textStyle = TextStyle(fontSize = 12.sp, color = Color.Black),
+                                colors = OutlinedTextFieldDefaults.colors(
+                                    focusedBorderColor = BrandGreen,
+                                    unfocusedBorderColor = Color(0xFFCBD5E1)
+                                )
+                            )
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        val isDone = dialogSelectedStatus.equals("Done", ignoreCase = true)
+                        if (isDone && dialogMechanicName.isBlank()) {
+                            Toast.makeText(context, "Mohon ketik Nama Mekanik yang melakukan perbaikan!", Toast.LENGTH_SHORT).show()
+                            return@Button
+                        }
+                        val resolvedTs = if (isDone) {
+                            if (rep.resolvedTimestamp > 0L) rep.resolvedTimestamp else System.currentTimeMillis()
+                        } else 0L
+
+                        val updated = rep.copy(
+                            status = dialogSelectedStatus,
+                            mechanicName = if (isDone) dialogMechanicName.trim() else "",
+                            repairNotes = if (isDone) dialogRepairNotes.trim() else "",
+                            resolvedTimestamp = resolvedTs,
+                            isSynced = false
+                        )
+                        onUpdateReport(updated)
+                        reportToUpdateStatus = null
+                        Toast.makeText(
+                            context,
+                            "Status abnormality berhasil diperbarui: '$dialogSelectedStatus'!",
+                            Toast.LENGTH_SHORT
+                        ).show()
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = BrandGreen),
+                    shape = RoundedCornerShape(8.dp)
+                ) {
+                    Text("Simpan Perubahan", fontWeight = FontWeight.Bold, fontSize = 12.sp, color = Color.White)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { reportToUpdateStatus = null }) {
+                    Text("Batal", color = Color.Gray, fontSize = 12.sp)
+                }
+            },
+            containerColor = Color.White,
+            shape = RoundedCornerShape(16.dp)
+        )
     }
 }
 }
@@ -7341,11 +9141,7 @@ fun FlushingScreen(
     var masterHour by remember { mutableStateOf("08:00") }
     var tasksState by remember { mutableStateOf(defaultFlushingTasks("08:00")) }
     var flushingNotes by remember { mutableStateOf("") }
-    var expandedMasterHour by remember { mutableStateOf(false) }
     var expandedOperatorDropdown by remember { mutableStateOf(false) }
-
-    // Dropdown hours list: 00:00 to 24:00 (25 items)
-    val hoursList = remember { (0..24).map { String.format("%02d:00", it) } }
 
     // Report Filter States
     var filterPeriod by remember { mutableStateOf("Hari ini") }
@@ -7863,94 +9659,6 @@ fun FlushingScreen(
                                         }
                                     }
                                 }
-
-                                // Waktu Pelaksanaan  :    |       | (Requested: background putih, tulisan jam hitam dan judul Waktu Pelaksanaan  :    |       |)
-                                Card(
-                                    colors = CardDefaults.cardColors(containerColor = Color.White),
-                                    shape = RoundedCornerShape(10.dp),
-                                    border = BorderStroke(1.5.dp, Color.Black),
-                                    modifier = Modifier.fillMaxWidth()
-                                ) {
-                                    Row(
-                                        modifier = Modifier
-                                            .padding(horizontal = 12.dp, vertical = 10.dp)
-                                            .fillMaxWidth(),
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        horizontalArrangement = Arrangement.SpaceBetween
-                                    ) {
-                                        Row(verticalAlignment = Alignment.CenterVertically) {
-                                            Icon(
-                                                imageVector = Icons.Default.Schedule,
-                                                contentDescription = null,
-                                                tint = Color.Black,
-                                                modifier = Modifier.size(18.dp)
-                                            )
-                                            Spacer(modifier = Modifier.width(8.dp))
-                                            Text(
-                                                text = "Waktu Pelaksanaan  :",
-                                                fontSize = 13.sp,
-                                                fontWeight = FontWeight.Bold,
-                                                color = Color.Black
-                                            )
-                                        }
-
-                                        Box {
-                                            Surface(
-                                                onClick = { expandedMasterHour = true },
-                                                shape = RoundedCornerShape(8.dp),
-                                                border = BorderStroke(1.5.dp, Color.Black),
-                                                color = Color.White,
-                                                modifier = Modifier.testTag("flushing_time_selector")
-                                            ) {
-                                                Row(
-                                                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
-                                                    verticalAlignment = Alignment.CenterVertically
-                                                ) {
-                                                    Text(
-                                                        text = "|   $masterHour   |",
-                                                        fontSize = 14.sp,
-                                                        fontWeight = FontWeight.Bold,
-                                                        color = Color.Black
-                                                    )
-                                                    Spacer(modifier = Modifier.width(6.dp))
-                                                    Icon(
-                                                        imageVector = Icons.Default.ArrowDropDown,
-                                                        contentDescription = "Pilih Jam",
-                                                        tint = Color.Black,
-                                                        modifier = Modifier.size(20.dp)
-                                                    )
-                                                }
-                                            }
-
-                                            DropdownMenu(
-                                                expanded = expandedMasterHour,
-                                                onDismissRequest = { expandedMasterHour = false },
-                                                modifier = Modifier
-                                                    .heightIn(max = 240.dp)
-                                                    .background(Color.White)
-                                            ) {
-                                                hoursList.forEach { hr ->
-                                                    DropdownMenuItem(
-                                                        modifier = Modifier.background(Color.White),
-                                                        text = {
-                                                            Text(
-                                                                text = "|   $hr   |",
-                                                                fontSize = 13.sp,
-                                                                fontWeight = if (hr == masterHour) FontWeight.Bold else FontWeight.Normal,
-                                                                color = Color.Black
-                                                            )
-                                                        },
-                                                        onClick = {
-                                                            masterHour = hr
-                                                            tasksState = tasksState.map { it.copy(time = hr) }
-                                                            expandedMasterHour = false
-                                                        }
-                                                    )
-                                                }
-                                            }
-                                        }
-                                    }
-                                }
                             }
                         }
                     }
@@ -8143,20 +9851,23 @@ fun FlushingScreen(
                 val weekThreshold = remember(now) { now - 7L * 24 * 60 * 60 * 1000L }
                 val monthThreshold = remember(now) { now - 30L * 24 * 60 * 60 * 1000L }
 
-                val filteredLogs = flushingLogs.filter { log ->
-                    val matchesPeriod = when (filterPeriod) {
+                val periodLogs = flushingLogs.filter { log ->
+                    when (filterPeriod) {
                         "Hari ini" -> log.timestamp >= startOfToday
                         "Seminggu" -> log.timestamp >= weekThreshold
                         "Sebulan" -> log.timestamp >= monthThreshold
                         "Tanggal" -> log.timestamp in customStartDate..customEndDate
                         else -> true
                     }
+                }
+
+                val filteredLogs = periodLogs.filter { log ->
                     val matchesShift = filterShift == "Semua" || log.shift == filterShift
                     val matchesUnit = filterUnit == "Semua" || 
                         log.unitName.replace(" ", "-").equals(filterUnit.replace(" ", "-"), ignoreCase = true) ||
                         log.unitName.equals(filterUnit, ignoreCase = true)
 
-                    matchesPeriod && matchesShift && matchesUnit
+                    matchesShift && matchesUnit
                 }
 
                 val shiftPagiCount = filteredLogs.count { it.shift == "Shift Pagi" }
@@ -8165,27 +9876,73 @@ fun FlushingScreen(
                     (filteredLogs.sumOf { it.completedCount }.toDouble() / (filteredLogs.size * 11) * 100).toInt()
                 } else 100
 
+                // Per-mesin SC01 - SC08 flushing counts for Shift Pagi & Shift Malam
+                val scPagiCounts = (1..8).map { idx ->
+                    periodLogs.count { log ->
+                        val clean = log.unitName.replace("-", "").replace(" ", "").uppercase()
+                        (clean == "SC0$idx" || clean == "SC$idx") && log.shift.contains("Pagi", ignoreCase = true)
+                    }
+                }
+                val scMalamCounts = (1..8).map { idx ->
+                    periodLogs.count { log ->
+                        val clean = log.unitName.replace("-", "").replace(" ", "").uppercase()
+                        (clean == "SC0$idx" || clean == "SC$idx") && log.shift.contains("Malam", ignoreCase = true)
+                    }
+                }
+                val totalPagiTable = scPagiCounts.sum()
+                val totalMalamTable = scMalamCounts.sum()
+
                 LazyColumn(
                     modifier = Modifier
                         .fillMaxSize()
                         .padding(horizontal = 14.dp, vertical = 10.dp),
                     verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
-                    // KPI Highlights (Sinkron dengan Periode, Shift, dan Unit)
+                    // KPI Highlights & Rekapitulasi Mesin (Kotak Hitam)
                     item {
                         Card(
                             colors = CardDefaults.cardColors(containerColor = SlateGrey),
                             shape = RoundedCornerShape(16.dp),
                             elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
                         ) {
-                            Column(modifier = Modifier.padding(16.dp)) {
-                                Text(
-                                    "Rekapitulasi Laporan Flushing Mill",
-                                    color = Color.White,
-                                    fontSize = 15.sp,
-                                    fontWeight = FontWeight.Bold
-                                )
-                                Spacer(modifier = Modifier.height(10.dp))
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(16.dp),
+                                verticalArrangement = Arrangement.spacedBy(12.dp)
+                            ) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Column {
+                                        Text(
+                                            "Rekapitulasi Laporan Flushing Mill",
+                                            color = Color.White,
+                                            fontSize = 15.sp,
+                                            fontWeight = FontWeight.Bold
+                                        )
+                                        Text(
+                                            text = "Periode: $filterPeriod",
+                                            color = Color(0xFF94A3B8),
+                                            fontSize = 11.sp
+                                        )
+                                    }
+                                    Surface(
+                                        color = Color(0xFF334155),
+                                        shape = RoundedCornerShape(8.dp)
+                                    ) {
+                                        Text(
+                                            text = "${filteredLogs.size} Laporan",
+                                            color = Color.White,
+                                            fontSize = 11.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                                        )
+                                    }
+                                }
+
                                 Row(
                                     modifier = Modifier.fillMaxWidth(),
                                     horizontalArrangement = Arrangement.SpaceBetween
@@ -8194,6 +9951,177 @@ fun FlushingScreen(
                                     FlushingStatBox(label = "Shift Pagi", value = "$shiftPagiCount", color = Color(0xFFFFD54F))
                                     FlushingStatBox(label = "Shift Malam", value = "$shiftMalamCount", color = Color(0xFFB39DDB))
                                     FlushingStatBox(label = "Kepatuhan SOP", value = "$avgCompliance%", color = Color(0xFF81C784))
+                                }
+
+                                // Tabel 3 Kolom: |Mesin| |Shift Pagi| |Shift Malam|
+                                Surface(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    shape = RoundedCornerShape(10.dp),
+                                    color = Color(0xFF0F172A),
+                                    border = BorderStroke(1.dp, Color(0xFF334155))
+                                ) {
+                                    Column(modifier = Modifier.fillMaxWidth()) {
+                                        // Header: |Mesin| |Shift Pagi| |Shift Malam|
+                                        Row(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .background(Color(0xFF334155))
+                                                .padding(horizontal = 10.dp, vertical = 9.dp),
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Text(
+                                                text = "|Mesin|",
+                                                color = Color.White,
+                                                fontSize = 12.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                modifier = Modifier.weight(1f),
+                                                textAlign = TextAlign.Center
+                                            )
+                                            Text(
+                                                text = "|Shift Pagi|",
+                                                color = Color(0xFFFFD54F),
+                                                fontSize = 12.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                modifier = Modifier.weight(1.2f),
+                                                textAlign = TextAlign.Center
+                                            )
+                                            Text(
+                                                text = "|Shift Malam|",
+                                                color = Color(0xFFB39DDB),
+                                                fontSize = 12.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                modifier = Modifier.weight(1.2f),
+                                                textAlign = TextAlign.Center
+                                            )
+                                        }
+
+                                        HorizontalDivider(color = Color(0xFF475569), thickness = 1.dp)
+
+                                        // List Baris: |SC01| sampai |SC08|
+                                        (1..8).forEach { idx ->
+                                            val scLabel = String.format("|SC%02d|", idx)
+                                            val pagiCount = scPagiCounts[idx - 1]
+                                            val malamCount = scMalamCounts[idx - 1]
+                                            val isEven = idx % 2 == 0
+                                            val rowBg = if (isEven) Color(0xFF1E293B) else Color(0xFF0F172A)
+
+                                            Row(
+                                                modifier = Modifier
+                                                    .fillMaxWidth()
+                                                    .background(rowBg)
+                                                    .padding(horizontal = 10.dp, vertical = 7.dp),
+                                                verticalAlignment = Alignment.CenterVertically
+                                            ) {
+                                                // Kolom 1: |SC01| .. |SC08|
+                                                Text(
+                                                    text = scLabel,
+                                                    color = Color.White,
+                                                    fontSize = 11.5.sp,
+                                                    fontWeight = FontWeight.Bold,
+                                                    modifier = Modifier.weight(1f),
+                                                    textAlign = TextAlign.Center
+                                                )
+
+                                                // Kolom 2: Shift Pagi
+                                                Box(
+                                                    modifier = Modifier.weight(1.2f),
+                                                    contentAlignment = Alignment.Center
+                                                ) {
+                                                    if (pagiCount > 0) {
+                                                        Surface(
+                                                            shape = RoundedCornerShape(4.dp),
+                                                            color = Color(0xFF78350F).copy(alpha = 0.5f),
+                                                            border = BorderStroke(0.5.dp, Color(0xFFF59E0B))
+                                                        ) {
+                                                            Text(
+                                                                text = "$pagiCount kali",
+                                                                fontSize = 11.sp,
+                                                                fontWeight = FontWeight.Bold,
+                                                                color = Color(0xFFFFD54F),
+                                                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
+                                                            )
+                                                        }
+                                                    } else {
+                                                        Text(
+                                                            text = "0 kali",
+                                                            fontSize = 11.sp,
+                                                            color = Color(0xFF64748B),
+                                                            textAlign = TextAlign.Center
+                                                        )
+                                                    }
+                                                }
+
+                                                // Kolom 3: Shift Malam
+                                                Box(
+                                                    modifier = Modifier.weight(1.2f),
+                                                    contentAlignment = Alignment.Center
+                                                ) {
+                                                    if (malamCount > 0) {
+                                                        Surface(
+                                                            shape = RoundedCornerShape(4.dp),
+                                                            color = Color(0xFF3B0764).copy(alpha = 0.5f),
+                                                            border = BorderStroke(0.5.dp, Color(0xFFA855F7))
+                                                        ) {
+                                                            Text(
+                                                                text = "$malamCount kali",
+                                                                fontSize = 11.sp,
+                                                                fontWeight = FontWeight.Bold,
+                                                                color = Color(0xFFD8B4FE),
+                                                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
+                                                            )
+                                                        }
+                                                    } else {
+                                                        Text(
+                                                            text = "0 kali",
+                                                            fontSize = 11.sp,
+                                                            color = Color(0xFF64748B),
+                                                            textAlign = TextAlign.Center
+                                                        )
+                                                    }
+                                                }
+                                            }
+
+                                            if (idx < 8) {
+                                                HorizontalDivider(color = Color(0xFF334155).copy(alpha = 0.5f), thickness = 0.5.dp)
+                                            }
+                                        }
+
+                                        HorizontalDivider(color = Color(0xFF475569), thickness = 1.dp)
+
+                                        // Total Row
+                                        Row(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .background(Color(0xFF334155))
+                                                .padding(horizontal = 10.dp, vertical = 8.dp),
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Text(
+                                                text = "|Total|",
+                                                color = Color.White,
+                                                fontSize = 11.5.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                modifier = Modifier.weight(1f),
+                                                textAlign = TextAlign.Center
+                                            )
+                                            Text(
+                                                text = "$totalPagiTable kali",
+                                                color = Color(0xFFFFD54F),
+                                                fontSize = 11.5.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                modifier = Modifier.weight(1.2f),
+                                                textAlign = TextAlign.Center
+                                            )
+                                            Text(
+                                                text = "$totalMalamTable kali",
+                                                color = Color(0xFFB39DDB),
+                                                fontSize = 11.5.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                modifier = Modifier.weight(1.2f),
+                                                textAlign = TextAlign.Center
+                                            )
+                                        }
+                                    }
                                 }
                             }
                         }

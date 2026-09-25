@@ -71,6 +71,12 @@ class CentrifugeViewModel(application: Application, private val repository: Repo
         }
     }
 
+    fun updateAbnormalityReport(report: AbnormalityReport) {
+        viewModelScope.launch {
+            repository.updateAbnormalityReport(report)
+        }
+    }
+
     fun deleteReport(report: AbnormalityReport) {
         viewModelScope.launch {
             repository.deleteAbnormalityReport(report)

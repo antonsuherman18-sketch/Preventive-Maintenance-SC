@@ -94,7 +94,11 @@ data class AbnormalityReport(
     val rpn: Int = severityScore * occurrenceScore * detectionScore,
     val photoUri: String? = null, // Local photo path if captured
     val picName: String = "Anton Suherman",
-    val tagType: String = "White Tag", // White Tag, Yellow Tag, None
+    val tagType: String = "",
+    val status: String = "Open", // "Open" (default pertama kali muncul = belum diselesaikan) atau "Done"
+    val mechanicName: String = "", // Nama Mekanik yang melakukan perbaikan
+    val repairNotes: String = "", // Catatan perbaikan jika ada
+    val resolvedTimestamp: Long = 0L, // Timestamp saat status ditandai Done
     val isSynced: Boolean = false
 )
 

@@ -121,6 +121,18 @@ class Repository(
         }
     }
 
+    suspend fun updateAbnormalityReport(report: AbnormalityReport) {
+        abnormalityDao.updateReport(report)
+        if (_isOnline.value) {
+            try {
+                firestoreSyncManager.pushAbnormality(report)
+                abnormalityDao.markSynced(report.id)
+            } catch (e: Exception) {
+                Log.e("Repository", "Update Abnormality failed, queued locally", e)
+            }
+        }
+    }
+
     suspend fun deleteAbnormalityReport(report: AbnormalityReport) {
         abnormalityDao.deleteReport(report)
         if (_isOnline.value) {
@@ -289,7 +301,7 @@ class Repository(
                 )
             )
 
-            // 3. Pre-populate Abnormality Reports (White & Yellow Tag)
+            // 3. Pre-populate Abnormality Reports
             // Slide 14 & 24: "Vibrasi mesin tinggi mencapai 8.8 mm/s", "Kebocoran minyak dari light phase"
             abnormalityDao.insertReport(
                 AbnormalityReport(
@@ -302,7 +314,7 @@ class Repository(
                     detectionScore = 5,
                     rpn = 280,
                     picName = "Anton Suherman",
-                    tagType = "Yellow Tag", // Yellow tag for production operator attention
+                    tagType = "",
                     isSynced = true
                 )
             )
@@ -317,7 +329,7 @@ class Repository(
                     detectionScore = 3,
                     rpn = 72,
                     picName = "Anton Suherman",
-                    tagType = "White Tag", // White tag for mechanic maintenance work
+                    tagType = "",
                     isSynced = true
                 )
             )

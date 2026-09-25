@@ -122,7 +122,7 @@ fun JakartaScreen(
                             }
                         },
                         label = { Text("Password / PIN", color = Color(0xFF333333)) },
-                        placeholder = { Text("Masukkan Password (6321)", color = Color(0xFF666666)) },
+                        placeholder = { Text("Masukkan Password", color = Color(0xFF666666)) },
                         singleLine = true,
                         isError = passwordError,
                         textStyle = androidx.compose.ui.text.TextStyle(
@@ -380,8 +380,13 @@ fun JakartaScreen(
         }
     }
 
-    // 3. RELIABILITY PM CALCULATIONS (Real-time Abnormality Findings)
-    val recentAbnormalityFindings = reports.sortedByDescending { it.timestamp }
+    // 3. RELIABILITY PM CALCULATIONS (Real-time Abnormality Findings: Open status & Highest RPN first)
+    val openAbnormalities = reports.filter { it.status.equals("Open", ignoreCase = true) }
+    val sortedAbnormalityFindings = reports.sortedWith(
+        compareByDescending<AbnormalityReport> { it.status.equals("Open", ignoreCase = true) }
+            .thenByDescending { it.rpn }
+            .thenByDescending { it.timestamp }
+    )
     val todayAbnormalityCount = reports.count { it.timestamp in cycleStartTime..checkTimeMillis }
 
     // 4. FLUSHING CALCULATIONS (From 07:00 to current check time)
@@ -395,7 +400,7 @@ fun JakartaScreen(
     // Synchronized total findings per category
     val totalMonitoringAlerts = vibAlerts.size + missingVibInputCount
     val totalCiltAlerts = unperformedCiltOperators.size + ciltFindings.size
-    val totalPmAlerts = recentAbnormalityFindings.size
+    val totalPmAlerts = if (openAbnormalities.isNotEmpty()) openAbnormalities.size else reports.count { it.status.equals("Open", ignoreCase = true) }
     val totalFlushingAlerts = if (isFlushingNotDoneToday) 1 else incompleteFlushingLogs.size
 
     val listState = androidx.compose.foundation.lazy.rememberLazyListState()
@@ -1061,27 +1066,28 @@ fun JakartaScreen(
                                         Spacer(modifier = Modifier.width(8.dp))
                                         Column {
                                             Text(
-                                                text = "Rincian $totalPmAlerts Temuan Reliability PM",
+                                                text = if (openAbnormalities.isNotEmpty()) "Rincian ${openAbnormalities.size} Temuan Open Reliability PM" else "Rincian Temuan Reliability PM",
                                                 fontSize = 13.sp,
                                                 fontWeight = FontWeight.Bold,
                                                 color = SlateGrey
                                             )
                                             Text(
-                                                text = "Daftar temuan abnormality aktif & FMEA",
+                                                text = "Diurutkan: Status Open teratas & RPN tertinggi",
                                                 fontSize = 10.sp,
-                                                color = Color.Gray
+                                                color = Color(0xFF6A1B9A),
+                                                fontWeight = FontWeight.Medium
                                             )
                                         }
                                     }
                                     Surface(
-                                        color = if (totalPmAlerts > 0) Color(0xFFFFEBEE) else Color(0xFFE8F5E9),
+                                        color = if (openAbnormalities.isNotEmpty()) Color(0xFFFFEBEE) else Color(0xFFE8F5E9),
                                         shape = RoundedCornerShape(6.dp)
                                     ) {
                                         Text(
-                                            text = if (totalPmAlerts > 0) "$totalPmAlerts Temuan" else "Nihil",
+                                            text = if (openAbnormalities.isNotEmpty()) "${openAbnormalities.size} Open Aktif" else "Semua Selesai",
                                             fontSize = 10.sp,
                                             fontWeight = FontWeight.Bold,
-                                            color = if (totalPmAlerts > 0) Color(0xFFD32F2F) else Color(0xFF2E7D32),
+                                            color = if (openAbnormalities.isNotEmpty()) Color(0xFFD32F2F) else Color(0xFF2E7D32),
                                             modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
                                         )
                                     }
@@ -1089,31 +1095,208 @@ fun JakartaScreen(
 
                                 Divider(color = Color(0xFFCE93D8), thickness = 0.8.dp)
 
-                                if (recentAbnormalityFindings.isNotEmpty()) {
-                                    recentAbnormalityFindings.take(5).forEach { rep ->
+                                if (openAbnormalities.isNotEmpty()) {
+                                    val highestOpenRpn = openAbnormalities.maxOfOrNull { it.rpn } ?: 0
+                                    val maxLead = openAbnormalities.maxOfOrNull {
+                                        maxOf(0L, (System.currentTimeMillis() - it.timestamp) / (24L * 3600 * 1000L))
+                                    } ?: 0L
+                                    Surface(
+                                        color = Color(0xFFFFF7ED),
+                                        shape = RoundedCornerShape(8.dp),
+                                        border = BorderStroke(1.dp, Color(0xFFFDBA74)),
+                                        modifier = Modifier.fillMaxWidth()
+                                    ) {
+                                        Row(
+                                            modifier = Modifier.padding(8.dp),
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Default.WarningAmber,
+                                                contentDescription = null,
+                                                tint = Color(0xFFC2410C),
+                                                modifier = Modifier.size(16.dp)
+                                            )
+                                            Text(
+                                                text = "${openAbnormalities.size} temuan Open perlu tindakan • RPN tertinggi: $highestOpenRpn • Lead time terlama: $maxLead hari",
+                                                fontSize = 10.5.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                color = Color(0xFF9A3412)
+                                            )
+                                        }
+                                    }
+                                }
+
+                                val itemsToShow = sortedAbnormalityFindings.take(maxOf(5, openAbnormalities.size))
+                                if (itemsToShow.isNotEmpty()) {
+                                    itemsToShow.forEach { rep ->
+                                        val isOpen = rep.status.equals("Open", ignoreCase = true)
+                                        val endMillis = if (!isOpen && rep.resolvedTimestamp > 0L) rep.resolvedTimestamp else System.currentTimeMillis()
+                                        val leadDays = maxOf(0L, (endMillis - rep.timestamp) / (24L * 3600 * 1000L))
+                                        val leadTimeDisplay = if (leadDays == 0L) "0 hari (Hari ini)" else "$leadDays hari"
+
                                         Surface(
-                                            color = Color(0xFFFAFAFA),
-                                            shape = RoundedCornerShape(8.dp),
-                                            border = BorderStroke(1.dp, Color(0xFFE0E0E0)),
+                                            color = if (isOpen) Color(0xFFFFFBF5) else Color(0xFFFAFAFA),
+                                            shape = RoundedCornerShape(10.dp),
+                                            border = BorderStroke(
+                                                width = if (isOpen) 1.5.dp else 1.dp,
+                                                color = if (isOpen) {
+                                                    if (rep.rpn >= 100) Color(0xFFFCA5A5) else Color(0xFFFDBA74)
+                                                } else Color(0xFFE2E8F0)
+                                            ),
                                             modifier = Modifier.fillMaxWidth()
                                         ) {
-                                            Column(modifier = Modifier.padding(8.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                                            Column(
+                                                modifier = Modifier.padding(10.dp),
+                                                verticalArrangement = Arrangement.spacedBy(6.dp)
+                                            ) {
+                                                // Baris 1: Judul Temuan & RPN Badge
                                                 Row(
                                                     modifier = Modifier.fillMaxWidth(),
                                                     horizontalArrangement = Arrangement.SpaceBetween,
                                                     verticalAlignment = Alignment.CenterVertically
                                                 ) {
-                                                    Text(rep.title, fontSize = 11.5.sp, fontWeight = FontWeight.Bold, color = SlateGrey)
-                                                    Text("RPN: ${rep.rpn}", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = if (rep.rpn >= 100) Color(0xFFC62828) else Color(0xFF2E7D32))
+                                                    Text(
+                                                        text = rep.title,
+                                                        fontSize = 12.sp,
+                                                        fontWeight = FontWeight.Bold,
+                                                        color = SlateGrey,
+                                                        modifier = Modifier.weight(1f).padding(end = 6.dp)
+                                                    )
+                                                    Surface(
+                                                        color = when {
+                                                            rep.rpn >= 100 -> Color(0xFFFEE2E2)
+                                                            rep.rpn >= 50 -> Color(0xFFFEF3C7)
+                                                            else -> BrandGreenLight
+                                                        },
+                                                        shape = RoundedCornerShape(6.dp),
+                                                        border = BorderStroke(
+                                                            1.dp,
+                                                            when {
+                                                                rep.rpn >= 100 -> Color(0xFFEF4444)
+                                                                rep.rpn >= 50 -> Color(0xFFF59E0B)
+                                                                else -> BrandGreen
+                                                            }.copy(alpha = 0.4f)
+                                                        )
+                                                    ) {
+                                                        Text(
+                                                            text = "RPN: ${rep.rpn}",
+                                                            fontSize = 11.sp,
+                                                            fontWeight = FontWeight.Bold,
+                                                            color = when {
+                                                                rep.rpn >= 100 -> Color(0xFFDC2626)
+                                                                rep.rpn >= 50 -> Color(0xFFD97706)
+                                                                else -> BrandGreen
+                                                            },
+                                                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+                                                        )
+                                                    }
                                                 }
-                                                Text(rep.description, fontSize = 10.5.sp, color = Color.DarkGray)
-                                                Text("PIC: ${rep.picName} • Tag: ${rep.tagType}", fontSize = 9.5.sp, color = Color.Gray)
+
+                                                // Baris 2: Deskripsi Temuan
+                                                Text(
+                                                    text = rep.description,
+                                                    fontSize = 11.sp,
+                                                    color = Color(0xFF334155),
+                                                    lineHeight = 15.sp
+                                                )
+
+                                                // Baris 3: Status Badge, Lead Time Badge & PIC
+                                                Row(
+                                                    modifier = Modifier.fillMaxWidth(),
+                                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                                    verticalAlignment = Alignment.CenterVertically
+                                                ) {
+                                                    Row(
+                                                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                                        verticalAlignment = Alignment.CenterVertically
+                                                    ) {
+                                                        // Status Badge
+                                                        Surface(
+                                                            color = if (isOpen) Color(0xFFFFF7ED) else Color(0xFFF0FDF4),
+                                                            shape = RoundedCornerShape(6.dp),
+                                                            border = BorderStroke(1.dp, if (isOpen) Color(0xFFFDBA74) else Color(0xFF86EFAC))
+                                                        ) {
+                                                            Row(
+                                                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 3.dp),
+                                                                verticalAlignment = Alignment.CenterVertically,
+                                                                horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                                            ) {
+                                                                Box(
+                                                                    modifier = Modifier
+                                                                        .size(6.dp)
+                                                                        .clip(CircleShape)
+                                                                        .background(if (isOpen) Color(0xFFEA580C) else Color(0xFF16A34A))
+                                                                )
+                                                                Text(
+                                                                    text = if (isOpen) "Open" else "Done",
+                                                                    fontSize = 10.5.sp,
+                                                                    fontWeight = FontWeight.Bold,
+                                                                    color = if (isOpen) Color(0xFFC2410C) else Color(0xFF15803D)
+                                                                )
+                                                            }
+                                                        }
+
+                                                        // Lead Time Badge (Hari)
+                                                        Surface(
+                                                            color = when {
+                                                                leadDays >= 7L -> Color(0xFFFEE2E2)
+                                                                leadDays >= 3L -> Color(0xFFFEF3C7)
+                                                                else -> Color(0xFFF0FDF4)
+                                                            },
+                                                            shape = RoundedCornerShape(6.dp),
+                                                            border = BorderStroke(
+                                                                1.dp,
+                                                                when {
+                                                                    leadDays >= 7L -> Color(0xFFFCA5A5)
+                                                                    leadDays >= 3L -> Color(0xFFFCD34D)
+                                                                    else -> Color(0xFF86EFAC)
+                                                                }
+                                                            )
+                                                        ) {
+                                                            Row(
+                                                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 3.dp),
+                                                                verticalAlignment = Alignment.CenterVertically,
+                                                                horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                                            ) {
+                                                                Icon(
+                                                                    imageVector = Icons.Default.Schedule,
+                                                                    contentDescription = null,
+                                                                    tint = when {
+                                                                        leadDays >= 7L -> Color(0xFFDC2626)
+                                                                        leadDays >= 3L -> Color(0xFFD97706)
+                                                                        else -> Color(0xFF15803D)
+                                                                    },
+                                                                    modifier = Modifier.size(11.dp)
+                                                                )
+                                                                Text(
+                                                                    text = if (isOpen) "Lead Time: $leadTimeDisplay" else "Selesai: $leadTimeDisplay",
+                                                                    fontSize = 10.5.sp,
+                                                                    fontWeight = FontWeight.Bold,
+                                                                    color = when {
+                                                                        leadDays >= 7L -> Color(0xFFDC2626)
+                                                                        leadDays >= 3L -> Color(0xFFB45309)
+                                                                        else -> Color(0xFF15803D)
+                                                                    }
+                                                                )
+                                                            }
+                                                        }
+                                                    }
+
+                                                    // Info PIC / Mekanik
+                                                    Text(
+                                                        text = if (isOpen) "PIC: ${rep.picName}" else "Mekanik: ${rep.mechanicName.ifBlank { "-" }}",
+                                                        fontSize = 10.sp,
+                                                        fontWeight = FontWeight.Medium,
+                                                        color = if (isOpen) Color.Gray else Color(0xFF166534)
+                                                    )
+                                                }
                                             }
                                         }
                                     }
-                                    if (recentAbnormalityFindings.size > 5) {
+                                    if (sortedAbnormalityFindings.size > itemsToShow.size) {
                                         Text(
-                                            text = "Lihat ${recentAbnormalityFindings.size - 5} temuan lainnya pada tabel lengkap di bawah.",
+                                            text = "Lihat ${sortedAbnormalityFindings.size - itemsToShow.size} temuan lainnya pada menu Reliability PM.",
                                             fontSize = 10.5.sp,
                                             color = Color.Gray,
                                             fontStyle = androidx.compose.ui.text.font.FontStyle.Italic
