@@ -102,7 +102,8 @@ object ExcelExporter {
 
         filteredLogs.sortedByDescending { it.timestamp }.forEach { log ->
             val dateStr = dateFormat.format(Date(log.timestamp))
-            val machineName = log.comments.lines().firstOrNull()?.take(30) ?: "SC Centrifuge"
+            val machineName = extractMachineUnit(log.comments)
+            val cleanNotes = cleanComments(log.comments)
             val greasedStr = when {
                 log.greasingStatus == "Belum Masuk Jadwal" -> "Belum Masuk Jadwal"
                 log.greasingStatus == "Ya" || log.isGreased -> "Sudah"
@@ -124,7 +125,7 @@ object ExcelExporter {
                 .append(escapeCsv(greasedStr)).append(",")
                 .append(escapeCsv(leakStr)).append(",")
                 .append(escapeCsv(log.soundState)).append(",")
-                .append(escapeCsv(log.comments)).append("\n")
+                .append(escapeCsv(cleanNotes)).append("\n")
         }
 
         shareExcelCsv(context, "Laporan_Monitoring_Trend_Centrifuge_$fileDate.csv", sb.toString())
@@ -241,14 +242,22 @@ object ExcelExporter {
         sb.append("Total PM Checks:,").append(filteredChecks.size).append("\n\n")
 
         sb.append("=== DAFTAR TEMUAN ABNORMALITY ===\n")
-        sb.append("ID,Waktu,Judul / Temuan,Status,Mekanik Perbaikan,RPN Score,Severity,Occurrence,Detection,Faktor 4M,PIC Pelapor,Deskripsi Temuan\n")
+        sb.append("ID,Waktu,Machine/Unit,Judul / Temuan,Status,Lead Time (Hari),Mekanik Perbaikan,RPN Score,Severity,Occurrence,Detection,Faktor 4M,PIC Pelapor,Deskripsi Temuan\n")
 
         filteredReports.sortedByDescending { it.timestamp }.forEach { rep ->
             val dateStr = dateFormat.format(Date(rep.timestamp))
+            val machineUnit = extractMachineUnit("${rep.title} ${rep.description}")
+            val isOpen = rep.status.equals("Open", ignoreCase = true)
+            val endMillis = if (!isOpen && rep.resolvedTimestamp > 0L) rep.resolvedTimestamp else System.currentTimeMillis()
+            val leadTimeDays = maxOf(0L, (endMillis - rep.timestamp) / (24L * 60 * 60 * 1000L))
+            val leadTimeText = "$leadTimeDays hari"
+
             sb.append(rep.id).append(",")
                 .append(escapeCsv(dateStr)).append(",")
+                .append(escapeCsv(machineUnit)).append(",")
                 .append(escapeCsv(rep.title)).append(",")
                 .append(escapeCsv(rep.status)).append(",")
+                .append(escapeCsv(leadTimeText)).append(",")
                 .append(escapeCsv(rep.mechanicName)).append(",")
                 .append(rep.rpn).append(",")
                 .append(rep.severityScore).append(",")
@@ -261,12 +270,14 @@ object ExcelExporter {
 
         if (filteredChecks.isNotEmpty()) {
             sb.append("\n=== LOG RELIABILITY PM CHECKLIST ===\n")
-            sb.append("ID,Waktu,Flushing Interval (Menit),Suhu Air (°C),Hollow Bearing,Coupling Leak,Vibration Check,Bowl Speed (RPM),Bearing Temp (°C),Unusual Noise,Catatan\n")
+            sb.append("ID,Waktu,Machine/Unit,Flushing Interval (Menit),Suhu Air (°C),Hollow Bearing,Coupling Leak,Vibration Check,Bowl Speed (RPM),Bearing Temp (°C),Unusual Noise,Catatan\n")
             filteredChecks.sortedByDescending { it.timestamp }.forEach { chk ->
                 val dateStr = dateFormat.format(Date(chk.timestamp))
+                val machineUnit = extractMachineUnit(chk.comments)
                 fun bStr(b: Boolean) = if (b) "OK / Checked" else "Belum"
                 sb.append(chk.id).append(",")
                     .append(escapeCsv(dateStr)).append(",")
+                    .append(escapeCsv(machineUnit)).append(",")
                     .append(chk.flushingIntervalMinutes).append(",")
                     .append(String.format(Locale.US, "%.1f", chk.waterTempCelsius)).append(",")
                     .append(bStr(chk.hollowBearingChecked)).append(",")
@@ -383,7 +394,8 @@ object ExcelExporter {
         sb.append("ID,Timestamp,Waktu,Machine/Unit,Axial 1 (mm/s),Axial 2 (mm/s),Horizontal (mm/s),Vertikal (mm/s),Bearing Temp,Motor Temp,Alarm State,Greasing,Leakage,Sound State,Catatan\n")
         filteredVib.sortedByDescending { it.timestamp }.forEach { log ->
             val dateStr = dateFormat.format(Date(log.timestamp))
-            val machineName = log.comments.lines().firstOrNull()?.take(30) ?: "SC Centrifuge"
+            val machineName = extractMachineUnit(log.comments)
+            val cleanNotes = cleanComments(log.comments)
             val greasedStr = when {
                 log.greasingStatus == "Belum Masuk Jadwal" -> "Belum Masuk Jadwal"
                 log.greasingStatus == "Ya" || log.isGreased -> "Sudah"
@@ -404,7 +416,7 @@ object ExcelExporter {
                 .append(escapeCsv(greasedStr)).append(",")
                 .append(escapeCsv(leakStr)).append(",")
                 .append(escapeCsv(log.soundState)).append(",")
-                .append(escapeCsv(log.comments)).append("\n")
+                .append(escapeCsv(cleanNotes)).append("\n")
         }
 
         // 2. CILT
@@ -435,13 +447,21 @@ object ExcelExporter {
 
         // 3. Reliability & Abnormality
         sb.append("\n=== 3. TEMUAN ABNORMALITY & RELIABILITY PM ===\n")
-        sb.append("ID,Waktu,Judul / Temuan,Status,Mekanik Perbaikan,RPN Score,Severity,Occurrence,Detection,Faktor 4M,PIC Pelapor,Deskripsi\n")
+        sb.append("ID,Waktu,Machine/Unit,Judul / Temuan,Status,Lead Time (Hari),Mekanik Perbaikan,RPN Score,Severity,Occurrence,Detection,Faktor 4M,PIC Pelapor,Deskripsi\n")
         filteredReports.sortedByDescending { it.timestamp }.forEach { rep ->
             val dateStr = dateFormat.format(Date(rep.timestamp))
+            val machineUnit = extractMachineUnit("${rep.title} ${rep.description}")
+            val isOpen = rep.status.equals("Open", ignoreCase = true)
+            val endMillis = if (!isOpen && rep.resolvedTimestamp > 0L) rep.resolvedTimestamp else System.currentTimeMillis()
+            val leadTimeDays = maxOf(0L, (endMillis - rep.timestamp) / (24L * 60 * 60 * 1000L))
+            val leadTimeText = "$leadTimeDays hari"
+
             sb.append(rep.id).append(",")
                 .append(escapeCsv(dateStr)).append(",")
+                .append(escapeCsv(machineUnit)).append(",")
                 .append(escapeCsv(rep.title)).append(",")
                 .append(escapeCsv(rep.status)).append(",")
+                .append(escapeCsv(leadTimeText)).append(",")
                 .append(escapeCsv(rep.mechanicName)).append(",")
                 .append(rep.rpn).append(",")
                 .append(rep.severityScore).append(",")
@@ -471,5 +491,63 @@ object ExcelExporter {
         }
 
         shareExcelCsv(context, "Laporan_Lengkap_Operasional_Centrifuge_$fileDate.csv", sb.toString())
+    }
+
+    fun extractMachineUnit(comments: String): String {
+        if (comments.isBlank()) return "SC-01"
+
+        // 1. Cek format tag bracket atau kurung [SC-01] atau (SC-01) s/d SC-08
+        val bracketMatch = Regex("""[\[\(](SC[-\s]?0?[1-8])[\]\)]""", RegexOption.IGNORE_CASE).find(comments)
+        if (bracketMatch != null) {
+            val rawNum = bracketMatch.groupValues[1].uppercase().replace(" ", "-").substringAfter("SC").replace("-", "")
+            val num = rawNum.toIntOrNull() ?: 1
+            return "SC-${String.format(Locale.US, "%02d", num)}"
+        }
+
+        // 2. Cek eksak unit SC-01 sampai SC-08
+        val units = listOf("SC-01", "SC-02", "SC-03", "SC-04", "SC-05", "SC-06", "SC-07", "SC-08")
+        for (unit in units) {
+            val num = unit.substringAfter("SC-")
+            val shortNum = num.trimStart('0')
+            if (comments.contains(unit, ignoreCase = true) ||
+                comments.contains(unit.replace("-", " "), ignoreCase = true) ||
+                comments.contains("SC$num", ignoreCase = true) ||
+                comments.contains("SC-$shortNum", ignoreCase = true) ||
+                comments.contains("SC $shortNum", ignoreCase = true)
+            ) {
+                return unit
+            }
+        }
+
+        // 3. Cek pola Sludge Centrifuge / Centrifuge No / Nomor / Mesin / Unit 1..8
+        val scMatch = Regex(
+            """(?:Sludge\s*Centrifuge|Centrifuge)\s*(?:No\.?|Nomor|Unit|Mesin)?\s*0?([1-8])\b""",
+            RegexOption.IGNORE_CASE
+        ).find(comments)
+        if (scMatch != null) {
+            val num = scMatch.groupValues[1].toIntOrNull() ?: 1
+            return "SC-${String.format(Locale.US, "%02d", num)}"
+        }
+
+        // 4. Cek pola Mesin / Unit 1..8
+        val unitMatch = Regex("""\b(?:Mesin|Unit)\s*(?:No\.?|Nomor)?\s*0?([1-8])\b""", RegexOption.IGNORE_CASE).find(comments)
+        if (unitMatch != null) {
+            val num = unitMatch.groupValues[1].toIntOrNull() ?: 1
+            return "SC-${String.format(Locale.US, "%02d", num)}"
+        }
+
+        // 5. Default ke unit utama Centrifuge
+        return "SC-01"
+    }
+
+    fun cleanComments(comments: String): String {
+        val withoutTag = comments
+            .replace(Regex("""\[SC[-\s]?0?[1-8]\]""", RegexOption.IGNORE_CASE), "")
+            .trim()
+        return when {
+            withoutTag.isEmpty() -> "-"
+            withoutTag.equals("Log manual", ignoreCase = true) -> "Log manual"
+            else -> withoutTag
+        }
     }
 }

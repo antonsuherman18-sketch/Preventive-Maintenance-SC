@@ -43,6 +43,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
+import androidx.compose.ui.window.PopupProperties
 import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.graphics.graphicsLayer
@@ -898,40 +899,58 @@ fun ReportRowItem(
     var showInfoDialog by remember { mutableStateOf(false) }
 
     if (showInfoDialog && infoText != null) {
-        AlertDialog(
+        Dialog(
             onDismissRequest = { showInfoDialog = false },
-            icon = {
-                Icon(
-                    imageVector = Icons.Default.Info,
-                    contentDescription = "Informasi Titik Ukur",
-                    tint = BrandGreen,
-                    modifier = Modifier.size(28.dp)
-                )
-            },
-            title = {
-                Text(
-                    text = "Titik Ukur: $label",
-                    fontWeight = FontWeight.Bold,
-                    fontSize = 15.sp,
-                    color = SlateGrey
-                )
-            },
-            text = {
-                Text(
-                    text = infoText,
-                    fontSize = 13.sp,
-                    color = Color(0xFF1E293B),
-                    lineHeight = 18.sp
-                )
-            },
-            confirmButton = {
-                TextButton(onClick = { showInfoDialog = false }) {
-                    Text("Tutup", fontWeight = FontWeight.Bold, color = BrandGreen)
+            properties = DialogProperties(usePlatformDefaultWidth = false)
+        ) {
+            Card(
+                colors = CardDefaults.cardColors(containerColor = Color.White),
+                shape = RoundedCornerShape(12.dp),
+                border = BorderStroke(1.dp, Color(0xFFE2E8F0)),
+                elevation = CardDefaults.cardElevation(defaultElevation = 6.dp),
+                modifier = Modifier
+                    .widthIn(min = 200.dp, max = 280.dp)
+                    .padding(horizontal = 24.dp)
+            ) {
+                Column(
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Info,
+                            contentDescription = null,
+                            tint = BrandGreen,
+                            modifier = Modifier.size(18.dp)
+                        )
+                        Text(
+                            text = "Titik Ukur: $label",
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 13.sp,
+                            color = SlateGrey
+                        )
+                    }
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(
+                        text = infoText,
+                        fontSize = 11.5.sp,
+                        color = Color(0xFF1E293B),
+                        lineHeight = 16.sp,
+                        textAlign = TextAlign.Center
+                    )
+                    Spacer(modifier = Modifier.height(10.dp))
+                    TextButton(
+                        onClick = { showInfoDialog = false },
+                        modifier = Modifier.height(32.dp)
+                    ) {
+                        Text("Tutup", fontWeight = FontWeight.Bold, fontSize = 12.sp, color = BrandGreen)
+                    }
                 }
-            },
-            containerColor = Color.White,
-            shape = RoundedCornerShape(12.dp)
-        )
+            }
+        }
     }
 
     val isZeroOrNull = value == null || value == 0f
@@ -2751,7 +2770,7 @@ fun DashboardScreen(
                             Spacer(modifier = Modifier.height(6.dp))
 
                             ReportRowItem("1", "Axial 1", reportValues.dev, "mm/s", 4.0f, infoText = "Titik ukur pada Bearing dekat dengan pulley")
-                            ReportRowItem("2", "Axial 2", reportValues.nde, "mm/s", 4.0f, infoText = "Titik ukur pada Bearing dengan dengan gland packing")
+                            ReportRowItem("2", "Axial 2", reportValues.nde, "mm/s", 4.0f, infoText = "Titik ukur pada Bearing dekat dengan gland packing")
                             ReportRowItem("3", "Horizontal", reportValues.motorVib, "mm/s", 4.0f, infoText = "Titik ukur pada Body mesin sejajar dengan titik Axial 1")
                             ReportRowItem("4", "Vertikal", reportValues.gearboxVib, "mm/s", 4.0f, infoText = "Titik ukur pada body mesin bagian atas tegak lurus dari titik Axial")
 
@@ -3548,40 +3567,58 @@ fun DashboardScreen(
             var activeVibInfoText by remember { mutableStateOf<String?>(null) }
 
             if (activeVibInfoText != null) {
-                AlertDialog(
+                Dialog(
                     onDismissRequest = { activeVibInfoText = null },
-                    icon = {
-                        Icon(
-                            imageVector = Icons.Default.Info,
-                            contentDescription = "Informasi Titik Ukur",
-                            tint = BrandGreen,
-                            modifier = Modifier.size(28.dp)
-                        )
-                    },
-                    title = {
-                        Text(
-                            text = activeVibInfoTitle ?: "Informasi Titik Ukur",
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 15.sp,
-                            color = SlateGrey
-                        )
-                    },
-                    text = {
-                        Text(
-                            text = activeVibInfoText ?: "",
-                            fontSize = 13.sp,
-                            color = Color(0xFF1E293B),
-                            lineHeight = 18.sp
-                        )
-                    },
-                    confirmButton = {
-                        TextButton(onClick = { activeVibInfoText = null }) {
-                            Text("Tutup", fontWeight = FontWeight.Bold, color = BrandGreen)
+                    properties = DialogProperties(usePlatformDefaultWidth = false)
+                ) {
+                    Card(
+                        colors = CardDefaults.cardColors(containerColor = Color.White),
+                        shape = RoundedCornerShape(12.dp),
+                        border = BorderStroke(1.dp, Color(0xFFE2E8F0)),
+                        elevation = CardDefaults.cardElevation(defaultElevation = 6.dp),
+                        modifier = Modifier
+                            .widthIn(min = 200.dp, max = 280.dp)
+                            .padding(horizontal = 24.dp)
+                    ) {
+                        Column(
+                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Info,
+                                    contentDescription = null,
+                                    tint = BrandGreen,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                                Text(
+                                    text = activeVibInfoTitle ?: "Informasi Titik Ukur",
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 13.sp,
+                                    color = SlateGrey
+                                )
+                            }
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Text(
+                                text = activeVibInfoText ?: "",
+                                fontSize = 11.5.sp,
+                                color = Color(0xFF1E293B),
+                                lineHeight = 16.sp,
+                                textAlign = TextAlign.Center
+                            )
+                            Spacer(modifier = Modifier.height(10.dp))
+                            TextButton(
+                                onClick = { activeVibInfoText = null },
+                                modifier = Modifier.height(32.dp)
+                            ) {
+                                Text("Tutup", fontWeight = FontWeight.Bold, fontSize = 12.sp, color = BrandGreen)
+                            }
                         }
-                    },
-                    containerColor = Color.White,
-                    shape = RoundedCornerShape(12.dp)
-                )
+                    }
+                }
             }
 
             Card(
@@ -4069,7 +4106,7 @@ fun DashboardScreen(
                                 name = "Axial 2",
                                 value = ndeVib,
                                 testTagStr = "axial_2_input",
-                                info = "Titik ukur pada Bearing dengan dengan gland packing",
+                                info = "Titik ukur pada Bearing dekat dengan gland packing",
                                 onValueChange = { ndeVib = it }
                             ),
                             VibInputField(
@@ -6531,6 +6568,7 @@ class FailureModeRowItem(
     var severity by mutableStateOf(initialSeverity)
     var occurrence by mutableStateOf(initialOccurrence)
     var detection by mutableStateOf(initialDetection)
+    var isCustomMode by mutableStateOf(isCustomInput)
 }
 
 @Composable
@@ -6538,58 +6576,216 @@ fun FailureModeOptionDropdown(
     selected: String,
     options: List<String>,
     onSelect: (String) -> Unit,
+    isCustomMode: Boolean,
+    onCustomModeChange: (Boolean) -> Unit,
     modifier: Modifier = Modifier
 ) {
     var expanded by remember { mutableStateOf(false) }
+    var customText by remember(selected, isCustomMode) {
+        mutableStateOf(if (isCustomMode) selected else "")
+    }
+
     Box(modifier = modifier) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .clip(RoundedCornerShape(6.dp))
-                .background(Color.White)
-                .border(1.dp, Color(0xFFCBD5E1), RoundedCornerShape(6.dp))
-                .clickable { expanded = !expanded }
-                .padding(horizontal = 8.dp, vertical = 6.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween
-        ) {
-            Text(
-                text = selected,
-                fontSize = 11.sp,
-                fontWeight = FontWeight.Medium,
-                color = Color.Black,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.weight(1f, fill = false)
-            )
-            Icon(
-                imageVector = Icons.Default.ArrowDropDown,
-                contentDescription = null,
-                tint = Color.Black,
-                modifier = Modifier.size(16.dp)
-            )
+        if (isCustomMode) {
+            // Tampilan saat mode ketik manual aktif pada baris tabel
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(36.dp)
+                    .clip(RoundedCornerShape(6.dp))
+                    .background(Color.White)
+                    .border(1.dp, BrandGreen, RoundedCornerShape(6.dp))
+                    .padding(horizontal = 8.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Box(
+                    modifier = Modifier.weight(1f),
+                    contentAlignment = Alignment.CenterStart
+                ) {
+                    if (selected.isEmpty()) {
+                        Text(
+                            text = "Ketik failure mode...",
+                            fontSize = 11.sp,
+                            color = Color(0xFF94A3B8)
+                        )
+                    }
+                    BasicTextField(
+                        value = selected,
+                        onValueChange = {
+                            customText = it
+                            onSelect(it)
+                        },
+                        singleLine = true,
+                        textStyle = TextStyle(
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Medium,
+                            color = Color.Black
+                        ),
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+                IconButton(
+                    onClick = { expanded = true },
+                    modifier = Modifier.size(20.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.ArrowDropDown,
+                        contentDescription = "Pilih dari Dropdown",
+                        tint = SlateGrey,
+                        modifier = Modifier.size(18.dp)
+                    )
+                }
+            }
+        } else {
+            // Tampilan saat opsi preset dipilih
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(36.dp)
+                    .clip(RoundedCornerShape(6.dp))
+                    .background(Color.White)
+                    .border(1.dp, Color(0xFFCBD5E1), RoundedCornerShape(6.dp))
+                    .clickable { expanded = !expanded }
+                    .padding(horizontal = 8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Text(
+                    text = if (selected.isNotBlank()) selected else "Pilih...",
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.Medium,
+                    color = Color.Black,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f, fill = false)
+                )
+                Icon(
+                    imageVector = Icons.Default.ArrowDropDown,
+                    contentDescription = null,
+                    tint = Color.Black,
+                    modifier = Modifier.size(16.dp)
+                )
+            }
         }
+
         DropdownMenu(
             expanded = expanded,
             onDismissRequest = { expanded = false },
-            modifier = Modifier.background(Color.White)
+            properties = PopupProperties(focusable = true),
+            modifier = Modifier
+                .width(220.dp)
+                .background(Color.White)
         ) {
+            // Opsi-opsi preset bawaan
             options.forEach { opt ->
                 DropdownMenuItem(
                     text = {
                         Text(
                             text = opt,
                             fontSize = 12.sp,
-                            fontWeight = if (selected == opt) FontWeight.Bold else FontWeight.Normal,
+                            fontWeight = if (!isCustomMode && selected == opt) FontWeight.Bold else FontWeight.Normal,
                             color = Color.Black
                         )
                     },
                     onClick = {
+                        onCustomModeChange(false)
                         onSelect(opt)
                         expanded = false
                     },
-                    modifier = Modifier.background(Color.White)
+                    modifier = Modifier.background(
+                        if (!isCustomMode && selected == opt) Color(0xFFF1F5F9) else Color.White
+                    )
                 )
+            }
+
+            HorizontalDivider(color = Color(0xFFE2E8F0))
+
+            // 1 BARIS KOSONG YANG DAPAT DIKETIK DI DROPDOWN LIST
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 8.dp, vertical = 6.dp)
+            ) {
+                Text(
+                    text = "Lainnya (Ketik Manual):",
+                    fontSize = 10.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color = Color.Gray
+                )
+                Spacer(modifier = Modifier.height(4.dp))
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(34.dp)
+                        .clip(RoundedCornerShape(6.dp))
+                        .background(if (isCustomMode) Color(0xFFE6F4F4) else Color(0xFFF8FAFC))
+                        .border(
+                            1.dp,
+                            if (isCustomMode) BrandGreen else Color(0xFFCBD5E1),
+                            RoundedCornerShape(6.dp)
+                        )
+                        .clickable {
+                            onCustomModeChange(true)
+                            if (selected in options) {
+                                onSelect(customText)
+                            }
+                            expanded = false
+                        }
+                        .padding(horizontal = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Edit,
+                        contentDescription = null,
+                        tint = if (isCustomMode) BrandGreen else Color.Gray,
+                        modifier = Modifier.size(14.dp)
+                    )
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Box(
+                        modifier = Modifier.weight(1f),
+                        contentAlignment = Alignment.CenterStart
+                    ) {
+                        if (customText.isEmpty()) {
+                            Text(
+                                text = "Ketik failure mode...",
+                                fontSize = 11.sp,
+                                color = Color(0xFF94A3B8)
+                            )
+                        }
+                        BasicTextField(
+                            value = customText,
+                            onValueChange = {
+                                customText = it
+                                onCustomModeChange(true)
+                                onSelect(it)
+                            },
+                            singleLine = true,
+                            textStyle = TextStyle(
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Medium,
+                                color = Color.Black
+                            ),
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                    }
+                    if (isCustomMode && customText.isNotEmpty()) {
+                        IconButton(
+                            onClick = {
+                                onCustomModeChange(true)
+                                onSelect(customText)
+                                expanded = false
+                            },
+                            modifier = Modifier.size(20.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Check,
+                                contentDescription = "Pilih",
+                                tint = BrandGreen,
+                                modifier = Modifier.size(14.dp)
+                            )
+                        }
+                    }
+                }
             }
         }
     }
@@ -6756,7 +6952,9 @@ data class ReportRowAccumulation(
     val openCount: Int = 0,
     val doneCount: Int = 0,
     val avgLeadTimeDays: Double = 0.0,
-    val maxLeadTimeDays: Long = 0L
+    val maxLeadTimeDays: Long = 0L,
+    val longestOpenLeadDays: Long? = null,
+    val maxDoneLeadDays: Long? = null
 )
 
 @Composable
@@ -6956,6 +7154,15 @@ fun AbnormalityScreen(
 
     // State untuk Dialog Update Status Abnormality (Open <-> Done, Lead Time & Nama Mekanik)
     var reportToUpdateStatus by remember { mutableStateOf<AbnormalityReport?>(null) }
+    var reportToDelete by remember { mutableStateOf<AbnormalityReport?>(null) }
+    var currentTimeMillis by remember { mutableStateOf(System.currentTimeMillis()) }
+
+    LaunchedEffect(Unit) {
+        while (true) {
+            kotlinx.coroutines.delay(10_000L) // Refresh tiap 10 detik agar batas 5 menit aktif akurat secara real-time
+            currentTimeMillis = System.currentTimeMillis()
+        }
+    }
     var dialogSelectedStatus by remember { mutableStateOf("Done") }
     var dialogMechanicName by remember { mutableStateOf("") }
     var dialogRepairNotes by remember { mutableStateOf("") }
@@ -7605,6 +7812,8 @@ fun AbnormalityScreen(
                                                     selected = item.selectedFailureMode,
                                                     options = item.failureModeOptions,
                                                     onSelect = { item.selectedFailureMode = it },
+                                                    isCustomMode = item.isCustomMode,
+                                                    onCustomModeChange = { item.isCustomMode = it },
                                                     modifier = Modifier
                                                         .width(185.dp)
                                                         .padding(end = 8.dp)
@@ -7703,6 +7912,9 @@ fun AbnormalityScreen(
                                 if (it.isCustomInput) {
                                     it.component = ""
                                     it.selectedFailureMode = ""
+                                } else {
+                                    it.isCustomMode = false
+                                    it.selectedFailureMode = it.failureModeOptions.firstOrNull() ?: ""
                                 }
                                 it.severity = 0
                                 it.occurrence = 0
@@ -7739,13 +7951,26 @@ fun AbnormalityScreen(
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Column {
+                        val ageMs = currentTimeMillis - r.timestamp
+                        val isDeletable = ageMs in 0L..(5 * 60 * 1000L)
+                        val remainingSec = if (isDeletable) ((5 * 60 * 1000L - ageMs) / 1000L).coerceAtLeast(0L) else 0L
+                        val remainingText = if (isDeletable) "${remainingSec / 60}m ${String.format(Locale.US, "%02d", remainingSec % 60)}s" else null
+
+                        Column(modifier = Modifier.weight(1f, fill = false)) {
                             Text(r.title, fontWeight = FontWeight.Bold, fontSize = 14.sp, color = SlateGrey)
                             Text(
                                 WibDateUtils.format("dd MMM yyyy", r.timestamp) + " WIB • ${r.picName}",
                                 fontSize = 10.sp,
                                 color = Color.Black
                             )
+                            if (isDeletable && remainingText != null) {
+                                Text(
+                                    text = "Bisa dihapus ($remainingText)",
+                                    fontSize = 9.5.sp,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = Color(0xFFDC2626)
+                                )
+                            }
                         }
 
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -7772,8 +7997,22 @@ fun AbnormalityScreen(
                                 )
                             }
 
-                            IconButton(onClick = { onDeleteReport(r) }, modifier = Modifier.size(24.dp)) {
-                                Icon(imageVector = Icons.Default.Delete, contentDescription = "Delete", tint = Color.Gray)
+                            IconButton(
+                                onClick = {
+                                    if (isDeletable) {
+                                        reportToDelete = r
+                                    } else {
+                                        Toast.makeText(context, "Ikon hapus dinonaktifkan (batas waktu 5 menit setelah input telah berakhir)", Toast.LENGTH_SHORT).show()
+                                    }
+                                },
+                                enabled = isDeletable,
+                                modifier = Modifier.size(24.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Delete,
+                                    contentDescription = if (isDeletable) "Hapus Temuan" else "Hapus Dinonaktifkan (> 5 Menit)",
+                                    tint = if (isDeletable) Color(0xFFDC2626) else Color(0xFFCBD5E1)
+                                )
                             }
                         }
                     }
@@ -8044,18 +8283,23 @@ fun AbnormalityScreen(
                         modes.isNotEmpty() -> modes.joinToString(", ")
                         else -> "${matched.size}x temuan"
                     }
-                    val openCases = matched.count { it.status.equals("Open", ignoreCase = true) }
-                    val doneCases = matched.count { it.status.equals("Done", ignoreCase = true) }
-                    val leadTimes = matched.map { r ->
-                        val endMillis = if (!r.status.equals("Open", ignoreCase = true) && r.resolvedTimestamp > 0L) {
-                            r.resolvedTimestamp
-                        } else {
-                            nowMillis
-                        }
+                    val openReports = matched.filter { it.status.equals("Open", ignoreCase = true) }
+                    val doneReports = matched.filter { it.status.equals("Done", ignoreCase = true) }
+                    val openCases = openReports.size
+                    val doneCases = doneReports.size
+                    val openLeadTimes = openReports.map { r ->
+                        maxOf(0L, (nowMillis - r.timestamp) / (24L * 3600 * 1000L))
+                    }
+                    val doneLeadTimes = doneReports.map { r ->
+                        val endMillis = if (r.resolvedTimestamp > 0L) r.resolvedTimestamp else nowMillis
                         maxOf(0L, (endMillis - r.timestamp) / (24L * 3600 * 1000L))
                     }
-                    val avgLead = if (leadTimes.isNotEmpty()) leadTimes.average() else 0.0
-                    val maxLead = leadTimes.maxOrNull() ?: 0L
+                    val longestOpenLead = openLeadTimes.maxOrNull()
+                    val maxDoneLead = doneLeadTimes.maxOrNull()
+                    val allLeadTimes = openLeadTimes + doneLeadTimes
+                    val avgLead = if (allLeadTimes.isNotEmpty()) allLeadTimes.average() else 0.0
+                    val maxLead = allLeadTimes.maxOrNull() ?: 0L
+
                     ReportRowAccumulation(
                         no = no,
                         component = name,
@@ -8068,7 +8312,9 @@ fun AbnormalityScreen(
                         openCount = openCases,
                         doneCount = doneCases,
                         avgLeadTimeDays = avgLead,
-                        maxLeadTimeDays = maxLead
+                        maxLeadTimeDays = maxLead,
+                        longestOpenLeadDays = longestOpenLead,
+                        maxDoneLeadDays = maxDoneLead
                     )
                 }.toMutableList()
 
@@ -8088,18 +8334,23 @@ fun AbnormalityScreen(
                     customModes.isNotEmpty() -> customModes.joinToString(", ")
                     else -> "${nonStandardReports.size}x temuan"
                 }
-                val customOpenCases = nonStandardReports.count { it.status.equals("Open", ignoreCase = true) }
-                val customDoneCases = nonStandardReports.count { it.status.equals("Done", ignoreCase = true) }
-                val customLeadTimes = nonStandardReports.map { r ->
-                    val endMillis = if (!r.status.equals("Open", ignoreCase = true) && r.resolvedTimestamp > 0L) {
-                        r.resolvedTimestamp
-                    } else {
-                        nowMillis
-                    }
+                val customOpenReports = nonStandardReports.filter { it.status.equals("Open", ignoreCase = true) }
+                val customDoneReports = nonStandardReports.filter { it.status.equals("Done", ignoreCase = true) }
+                val customOpenCases = customOpenReports.size
+                val customDoneCases = customDoneReports.size
+                val customOpenLeadTimes = customOpenReports.map { r ->
+                    maxOf(0L, (nowMillis - r.timestamp) / (24L * 3600 * 1000L))
+                }
+                val customDoneLeadTimes = customDoneReports.map { r ->
+                    val endMillis = if (r.resolvedTimestamp > 0L) r.resolvedTimestamp else nowMillis
                     maxOf(0L, (endMillis - r.timestamp) / (24L * 3600 * 1000L))
                 }
-                val customAvgLead = if (customLeadTimes.isNotEmpty()) customLeadTimes.average() else 0.0
-                val customMaxLead = customLeadTimes.maxOrNull() ?: 0L
+                val customLongestOpenLead = customOpenLeadTimes.maxOrNull()
+                val customMaxDoneLead = customDoneLeadTimes.maxOrNull()
+                val customAllLeadTimes = customOpenLeadTimes + customDoneLeadTimes
+                val customAvgLead = if (customAllLeadTimes.isNotEmpty()) customAllLeadTimes.average() else 0.0
+                val customMaxLead = customAllLeadTimes.maxOrNull() ?: 0L
+
                 reportRows.add(
                     ReportRowAccumulation(
                         no = 8,
@@ -8113,7 +8364,9 @@ fun AbnormalityScreen(
                         openCount = customOpenCases,
                         doneCount = customDoneCases,
                         avgLeadTimeDays = customAvgLead,
-                        maxLeadTimeDays = customMaxLead
+                        maxLeadTimeDays = customMaxLead,
+                        longestOpenLeadDays = customLongestOpenLead,
+                        maxDoneLeadDays = customMaxDoneLead
                     )
                 )
 
@@ -8130,6 +8383,10 @@ fun AbnormalityScreen(
                     maxOf(0L, (endMillis - r.timestamp) / (24L * 3600 * 1000L))
                 }
                 val totalOverallAvgLead = if (allReportLeadTimes.isNotEmpty()) allReportLeadTimes.average() else 0.0
+                val maxOverallOpenLead = filteredReports
+                    .filter { it.status.equals("Open", ignoreCase = true) }
+                    .map { maxOf(0L, (nowMillis - it.timestamp) / (24L * 3600 * 1000L)) }
+                    .maxOrNull()
 
                 Card(
                     colors = CardDefaults.cardColors(containerColor = Color.White),
@@ -8400,21 +8657,20 @@ fun AbnormalityScreen(
                                                 }
                                             }
 
-                                            // 4. Lead Time (Hari) - Kolom baru setelah Status
+                                            // 4. Lead Time (Hari) - Menampilkan hari paling lama dan statusnya masih Open
                                             Box(modifier = Modifier.width(120.dp), contentAlignment = Alignment.Center) {
                                                 if (row.count == 0) {
                                                     Text("-", fontSize = 11.sp, color = Color.LightGray, fontWeight = FontWeight.Bold)
                                                 } else {
-                                                    val leadDisplay = if (row.count == 1) {
-                                                        "${row.maxLeadTimeDays} hari"
-                                                    } else {
-                                                        val formattedAvg = String.format(java.util.Locale.US, "%.1f", row.avgLeadTimeDays).removeSuffix(".0")
-                                                        "$formattedAvg hari"
-                                                    }
-                                                    val isLongLead = row.maxLeadTimeDays >= 7L
-                                                    val isMediumLead = row.maxLeadTimeDays in 3L..6L
+                                                    val hasOpen = row.longestOpenLeadDays != null
+                                                    // Jika report pada 1 komponen lebih dari 1 temuan, tampilkan untuk hari yang paling lama dan status masih open
+                                                    val leadDays = if (hasOpen) row.longestOpenLeadDays!! else (row.maxDoneLeadDays ?: 0L)
+                                                    val leadDisplay = "$leadDays hari"
+                                                    val isLongLead = leadDays >= 7L
+                                                    val isMediumLead = leadDays in 3L..6L
                                                     Surface(
                                                         color = when {
+                                                            !hasOpen -> Color(0xFFF1F5F9) // Semua temuan komponen selesai (Done)
                                                             isLongLead -> Color(0xFFFEE2E2)
                                                             isMediumLead -> Color(0xFFFEF3C7)
                                                             else -> Color(0xFFF0FDF4)
@@ -8423,6 +8679,7 @@ fun AbnormalityScreen(
                                                         border = BorderStroke(
                                                             1.dp,
                                                             when {
+                                                                !hasOpen -> Color(0xFFCBD5E1)
                                                                 isLongLead -> Color(0xFFFCA5A5)
                                                                 isMediumLead -> Color(0xFFFCD34D)
                                                                 else -> Color(0xFF86EFAC)
@@ -8435,9 +8692,10 @@ fun AbnormalityScreen(
                                                             horizontalArrangement = Arrangement.spacedBy(4.dp)
                                                         ) {
                                                             Icon(
-                                                                imageVector = Icons.Default.Schedule,
+                                                                imageVector = if (!hasOpen) Icons.Default.CheckCircle else Icons.Default.Schedule,
                                                                 contentDescription = null,
                                                                 tint = when {
+                                                                    !hasOpen -> Color(0xFF475569)
                                                                     isLongLead -> Color(0xFFDC2626)
                                                                     isMediumLead -> Color(0xFFD97706)
                                                                     else -> Color(0xFF15803D)
@@ -8449,6 +8707,7 @@ fun AbnormalityScreen(
                                                                 fontSize = 11.sp,
                                                                 fontWeight = FontWeight.Bold,
                                                                 color = when {
+                                                                    !hasOpen -> Color(0xFF334155)
                                                                     isLongLead -> Color(0xFFDC2626)
                                                                     isMediumLead -> Color(0xFFB45309)
                                                                     else -> Color(0xFF15803D)
@@ -8540,12 +8799,17 @@ fun AbnormalityScreen(
                                             }
                                         }
 
-                                        // 4. Total Lead Time (Rata-rata lead time seluruh temuan)
+                                        // 4. Total Lead Time (Tampilkan max open lead time jika ada Open, atau rata-rata)
                                         Box(modifier = Modifier.width(120.dp), contentAlignment = Alignment.Center) {
                                             if (sumAllCount == 0) {
                                                 Text("-", fontSize = 11.sp, color = Color.White)
                                             } else {
-                                                val formattedTotalAvg = String.format(java.util.Locale.US, "%.1f", totalOverallAvgLead).removeSuffix(".0")
+                                                val footerLeadText = if (maxOverallOpenLead != null) {
+                                                    "$maxOverallOpenLead hari (Max)"
+                                                } else {
+                                                    val formattedTotalAvg = String.format(java.util.Locale.US, "%.1f", totalOverallAvgLead).removeSuffix(".0")
+                                                    "$formattedTotalAvg hari"
+                                                }
                                                 Surface(
                                                     color = Color.White.copy(alpha = 0.15f),
                                                     shape = RoundedCornerShape(4.dp)
@@ -8562,7 +8826,7 @@ fun AbnormalityScreen(
                                                             modifier = Modifier.size(11.dp)
                                                         )
                                                         Text(
-                                                            text = "$formattedTotalAvg hari",
+                                                            text = footerLeadText,
                                                             fontSize = 10.5.sp,
                                                             fontWeight = FontWeight.Bold,
                                                             color = Color.White
@@ -8842,8 +9106,26 @@ fun AbnormalityScreen(
                                         }
                                     }
 
-                                    IconButton(onClick = { onDeleteReport(r) }, modifier = Modifier.size(28.dp)) {
-                                        Icon(imageVector = Icons.Default.Delete, contentDescription = "Delete", tint = Color.Gray, modifier = Modifier.size(16.dp))
+                                    val ageMs = currentTimeMillis - r.timestamp
+                                    val isDeletable = ageMs in 0L..(5 * 60 * 1000L)
+
+                                    IconButton(
+                                        onClick = {
+                                            if (isDeletable) {
+                                                reportToDelete = r
+                                            } else {
+                                                Toast.makeText(context, "Ikon hapus dinonaktifkan (batas waktu 5 menit setelah input telah berakhir)", Toast.LENGTH_SHORT).show()
+                                            }
+                                        },
+                                        enabled = isDeletable,
+                                        modifier = Modifier.size(28.dp)
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.Delete,
+                                            contentDescription = if (isDeletable) "Hapus Temuan" else "Hapus Dinonaktifkan (> 5 Menit)",
+                                            tint = if (isDeletable) Color(0xFFDC2626) else Color(0xFFCBD5E1),
+                                            modifier = Modifier.size(16.dp)
+                                        )
                                     }
                                 }
                             }
@@ -8852,6 +9134,42 @@ fun AbnormalityScreen(
                 }
             }
         }
+    }
+
+    // Dialog Konfirmasi Hapus Temuan (Hanya jika <= 5 Menit)
+    if (reportToDelete != null) {
+        AlertDialog(
+            onDismissRequest = { reportToDelete = null },
+            title = { Text("Hapus Temuan Abnormality?", fontWeight = FontWeight.Bold) },
+            text = {
+                Text("Temuan \"${reportToDelete?.title}\" yang diinput oleh ${reportToDelete?.picName} akan dihapus secara permanen.")
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        reportToDelete?.let { rep ->
+                            if ((System.currentTimeMillis() - rep.timestamp) <= 5 * 60 * 1000L) {
+                                onDeleteReport(rep)
+                                Toast.makeText(context, "Temuan berhasil dihapus", Toast.LENGTH_SHORT).show()
+                            } else {
+                                Toast.makeText(context, "Gagal: Batas waktu 5 menit telah terlewati", Toast.LENGTH_LONG).show()
+                            }
+                        }
+                        reportToDelete = null
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = BrandRed)
+                ) {
+                    Text("Hapus", color = Color.White)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { reportToDelete = null }) {
+                    Text("Batal")
+                }
+            },
+            containerColor = Color.White,
+            shape = RoundedCornerShape(12.dp)
+        )
     }
 
     // Dialog Update Status Abnormality (Open <-> Done, Lead Time & Nama Mekanik)
@@ -9148,6 +9466,14 @@ fun FlushingScreen(
     var filterShift by remember { mutableStateOf("Semua") }
     var filterUnit by remember { mutableStateOf("Semua") }
     var logToDelete by remember { mutableStateOf<FlushingLog?>(null) }
+    var currentTimeMillis by remember { mutableStateOf(System.currentTimeMillis()) }
+
+    LaunchedEffect(Unit) {
+        while (true) {
+            kotlinx.coroutines.delay(10_000L) // Refresh tiap 10 detik agar batas 5 menit aktif akurat secara real-time
+            currentTimeMillis = System.currentTimeMillis()
+        }
+    }
 
     val todayStartMillis = remember { WibDateUtils.getStartOfDay() }
     val todayEndMillis = remember { todayStartMillis + 24 * 60 * 60 * 1000L - 1L }
@@ -9671,22 +9997,22 @@ fun FlushingScreen(
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Text(
-                                "Daftar Kegiatan Flushing (11 Poin)",
+                                "Daftar Kegiatan Flushing (${tasksState.size} Poin)",
                                 fontSize = 14.sp,
                                 fontWeight = FontWeight.Bold,
                                 color = SlateGrey
                             )
                             val doneCount = tasksState.count { it.isDone }
                             Text(
-                                "$doneCount/11 Selesai",
+                                "$doneCount/${tasksState.size} Selesai",
                                 fontSize = 11.sp,
                                 fontWeight = FontWeight.Bold,
-                                color = if (doneCount == 11) BrandGreen else BrandOrange
+                                color = if (doneCount == tasksState.size) BrandGreen else BrandOrange
                             )
                         }
                     }
 
-                    // 11 Activities grouped into "Persiapan" (1-3) & "Operation" (4-11)
+                    // Activities grouped into "Persiapan" (1-2) & "Operation" (3-8)
                     val persiapanTasks = tasksState.filter { it.tahapanGroup == "Persiapan" }
                     val operationTasks = tasksState.filter { it.tahapanGroup == "Operation" }
 
@@ -9703,7 +10029,7 @@ fun FlushingScreen(
                             ) {
                                 Icon(Icons.Default.BuildCircle, contentDescription = null, tint = Color(0xFF0369A1), modifier = Modifier.size(16.dp))
                                 Spacer(modifier = Modifier.width(6.dp))
-                                Text("Tahapan: Persiapan (Poin 1 - 3)", fontWeight = FontWeight.Bold, fontSize = 12.sp, color = Color(0xFF0369A1))
+                                Text("Tahapan: Persiapan (Poin 1 - 2)", fontWeight = FontWeight.Bold, fontSize = 12.sp, color = Color(0xFF0369A1))
                             }
                         }
                     }
@@ -9731,7 +10057,7 @@ fun FlushingScreen(
                             ) {
                                 Icon(Icons.Default.PlayCircleFilled, contentDescription = null, tint = Color(0xFF15803D), modifier = Modifier.size(16.dp))
                                 Spacer(modifier = Modifier.width(6.dp))
-                                Text("Tahapan: Operation (Poin 4 - 11)", fontWeight = FontWeight.Bold, fontSize = 12.sp, color = Color(0xFF15803D))
+                                Text("Tahapan: Operation (Poin 3 - 8)", fontWeight = FontWeight.Bold, fontSize = 12.sp, color = Color(0xFF15803D))
                             }
                         }
                     }
@@ -9800,7 +10126,7 @@ fun FlushingScreen(
                                             )
                                         }
                                         Spacer(modifier = Modifier.width(6.dp))
-                                        Text("Centang Semua (11)", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color(0xFF15803D))
+                                        Text("Centang Semua (${tasksState.size})", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color(0xFF15803D))
                                     }
 
                                     Button(
@@ -9872,8 +10198,9 @@ fun FlushingScreen(
 
                 val shiftPagiCount = filteredLogs.count { it.shift == "Shift Pagi" }
                 val shiftMalamCount = filteredLogs.count { it.shift == "Shift Malam" }
-                val avgCompliance = if (filteredLogs.isNotEmpty()) {
-                    (filteredLogs.sumOf { it.completedCount }.toDouble() / (filteredLogs.size * 11) * 100).toInt()
+                val totalTasksCount = filteredLogs.sumOf { if (it.totalCount > 0) it.totalCount else 8 }
+                val avgCompliance = if (filteredLogs.isNotEmpty() && totalTasksCount > 0) {
+                    (filteredLogs.sumOf { it.completedCount }.toDouble() / totalTasksCount * 100).toInt()
                 } else 100
 
                 // Per-mesin SC01 - SC08 flushing counts for Shift Pagi & Shift Malam
@@ -10353,6 +10680,7 @@ fun FlushingScreen(
                         items(filteredLogs, key = { it.id }) { log ->
                             FlushingReportCard(
                                 log = log,
+                                currentTimeMillis = currentTimeMillis,
                                 onDelete = { logToDelete = log }
                             )
                         }
@@ -10377,9 +10705,16 @@ fun FlushingScreen(
             confirmButton = {
                 Button(
                     onClick = {
-                        logToDelete?.let { onDeleteFlushingLog(it) }
+                        logToDelete?.let {
+                            val ageMs = System.currentTimeMillis() - it.timestamp
+                            if (ageMs in 0L..(5 * 60 * 1000L)) {
+                                onDeleteFlushingLog(it)
+                                Toast.makeText(context, "Laporan berhasil dihapus", Toast.LENGTH_SHORT).show()
+                            } else {
+                                Toast.makeText(context, "Tidak dapat menghapus: Batas waktu 5 menit telah berakhir", Toast.LENGTH_SHORT).show()
+                            }
+                        }
                         logToDelete = null
-                        Toast.makeText(context, "Laporan berhasil dihapus", Toast.LENGTH_SHORT).show()
                     },
                     colors = ButtonDefaults.buttonColors(containerColor = BrandRed)
                 ) {
@@ -10547,14 +10882,21 @@ fun FlushingStatBox(label: String, value: String, color: Color) {
 @Composable
 fun FlushingReportCard(
     log: FlushingLog,
+    currentTimeMillis: Long = System.currentTimeMillis(),
     onDelete: () -> Unit
 ) {
+    val context = LocalContext.current
     var expandedTable by remember { mutableStateOf(false) }
     val tasks = remember(log.itemsJson) { jsonToFlushingTasks(log.itemsJson) }
     val isPagi = log.shift == "Shift Pagi"
     val dateText = remember(log.timestamp) {
         WibDateUtils.format("dd MMM yyyy, HH:mm", log.timestamp) + " WIB"
     }
+
+    val ageMs = currentTimeMillis - log.timestamp
+    val isDeletable = ageMs in 0L..(5 * 60 * 1000L)
+    val remainingSec = if (isDeletable) ((5 * 60 * 1000L - ageMs) / 1000L).coerceAtLeast(0L) else 0L
+    val remainingText = if (isDeletable) "${remainingSec / 60}m ${String.format(Locale.US, "%02d", remainingSec % 60)}s" else null
 
     Card(
         colors = CardDefaults.cardColors(containerColor = Color.White),
@@ -10619,13 +10961,20 @@ fun FlushingReportCard(
 
                     Spacer(modifier = Modifier.width(4.dp))
                     IconButton(
-                        onClick = onDelete,
+                        onClick = {
+                            if (isDeletable) {
+                                onDelete()
+                            } else {
+                                Toast.makeText(context, "Ikon hapus dinonaktifkan (batas waktu 5 menit setelah input telah berakhir)", Toast.LENGTH_SHORT).show()
+                            }
+                        },
+                        enabled = isDeletable,
                         modifier = Modifier.size(28.dp)
                     ) {
                         Icon(
                             imageVector = Icons.Default.DeleteOutline,
-                            contentDescription = "Hapus",
-                            tint = Color.Gray,
+                            contentDescription = if (isDeletable) "Hapus Laporan Flushing" else "Hapus Dinonaktifkan (> 5 Menit)",
+                            tint = if (isDeletable) Color(0xFFDC2626) else Color(0xFFCBD5E1),
                             modifier = Modifier.size(18.dp)
                         )
                     }
@@ -10635,14 +10984,25 @@ fun FlushingReportCard(
             // Info Operator & Tanggal
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
             ) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Icon(imageVector = Icons.Default.Person, contentDescription = null, tint = Color.Gray, modifier = Modifier.size(14.dp))
                     Spacer(modifier = Modifier.width(4.dp))
                     Text("Operator: ${log.operatorName}", fontSize = 11.sp, fontWeight = FontWeight.SemiBold, color = SlateGrey)
                 }
-                Text(dateText, fontSize = 10.sp, color = Color.Gray)
+                Column(horizontalAlignment = Alignment.End) {
+                    Text(dateText, fontSize = 10.sp, color = Color.Gray)
+                    if (isDeletable && remainingText != null) {
+                        Text(
+                            text = "Bisa dihapus ($remainingText)",
+                            fontSize = 9.5.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = Color(0xFFDC2626)
+                        )
+                    }
+                }
             }
 
             // Compliance Progress

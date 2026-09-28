@@ -213,6 +213,7 @@ fun JakartaScreen(
     }
 
     val context = LocalContext.current
+    var activeReportCenterMenu by remember { mutableStateOf(0) } // 0: Report, 1: Cloud
     var selectedFilterTab by remember { mutableStateOf("Semua") }
 
     // State Dialog Tarik Data Excel dengan Rentang Tanggal
@@ -475,88 +476,168 @@ fun JakartaScreen(
 
                     Spacer(modifier = Modifier.height(14.dp))
 
-                    // Status Cut-Off Data Banner (07:00 s/d Saat Pengecekan)
+                    // 2-MENU TABS: [ Report ]  [ Cloud ]
                     Surface(
-                        modifier = Modifier.fillMaxWidth(),
-                        color = Color.Black.copy(alpha = 0.25f),
                         shape = RoundedCornerShape(10.dp),
-                        border = BorderStroke(1.dp, if (unitsMissingVibInput.isNotEmpty()) Color(0xFFFFB74D) else Color(0xFF81C784))
+                        color = Color.Black.copy(alpha = 0.35f),
+                        modifier = Modifier.fillMaxWidth()
                     ) {
                         Row(
-                            modifier = Modifier.padding(12.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.SpaceBetween
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(4.dp),
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
                         ) {
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                modifier = Modifier.weight(1f)
+                            // Menu 1: Report
+                            Surface(
+                                onClick = { activeReportCenterMenu = 0 },
+                                shape = RoundedCornerShape(7.dp),
+                                color = if (activeReportCenterMenu == 0) BrandGreen else Color.Transparent,
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .height(38.dp)
+                                    .testTag("tab_report_center_report")
                             ) {
-                                Icon(
-                                    imageVector = if (unitsMissingVibInput.isNotEmpty()) Icons.Default.Schedule else Icons.Default.CheckCircle,
-                                    contentDescription = null,
-                                    tint = if (unitsMissingVibInput.isNotEmpty()) Color(0xFFFFCC80) else Color(0xFFA5D6A7),
-                                    modifier = Modifier.size(20.dp)
-                                )
-                                Spacer(modifier = Modifier.width(10.dp))
-                                Column {
-                                    Text(
-                                        text = "Cut-Off Data: $checkRangeString",
-                                        fontWeight = FontWeight.Bold,
-                                        fontSize = 12.sp,
-                                        color = Color.White
+                                Row(
+                                    modifier = Modifier.fillMaxSize(),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.Center
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.Summarize,
+                                        contentDescription = "Report",
+                                        tint = if (activeReportCenterMenu == 0) Color.White else Color(0xFFB0BEC5),
+                                        modifier = Modifier.size(17.dp)
                                     )
+                                    Spacer(modifier = Modifier.width(6.dp))
                                     Text(
-                                        text = if (unitsMissingVibInput.isNotEmpty())
-                                            "Menampilkan data dari jam 07:00 sampai saat pengecekan ($currentHourMinute) • ${unitsMissingVibInput.size} mesin belum input • Diperbarui lagi $nextRenewalText"
-                                        else
-                                            "Semua mesin lengkap diinput (07:00 s/d $currentHourMinute) • Diperbarui lagi $nextRenewalText",
-                                        fontSize = 10.sp,
-                                        color = Color.LightGray
+                                        text = "Report",
+                                        fontWeight = if (activeReportCenterMenu == 0) FontWeight.Bold else FontWeight.Medium,
+                                        fontSize = 13.sp,
+                                        color = if (activeReportCenterMenu == 0) Color.White else Color(0xFFCFD8DC)
+                                    )
+                                }
+                            }
+
+                            // Menu 2: Cloud
+                            Surface(
+                                onClick = { activeReportCenterMenu = 1 },
+                                shape = RoundedCornerShape(7.dp),
+                                color = if (activeReportCenterMenu == 1) BrandGreen else Color.Transparent,
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .height(38.dp)
+                                    .testTag("tab_report_center_cloud")
+                            ) {
+                                Row(
+                                    modifier = Modifier.fillMaxSize(),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.Center
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.CloudQueue,
+                                        contentDescription = "Cloud",
+                                        tint = if (activeReportCenterMenu == 1) Color.White else Color(0xFFB0BEC5),
+                                        modifier = Modifier.size(17.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text(
+                                        text = "Cloud",
+                                        fontWeight = if (activeReportCenterMenu == 1) FontWeight.Bold else FontWeight.Medium,
+                                        fontSize = 13.sp,
+                                        color = if (activeReportCenterMenu == 1) Color.White else Color(0xFFCFD8DC)
                                     )
                                 }
                             }
                         }
                     }
 
-                    Spacer(modifier = Modifier.height(10.dp))
+                    if (activeReportCenterMenu == 0) {
+                        Spacer(modifier = Modifier.height(12.dp))
 
-                    // Cloud Sync Bar
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .background(Color.White.copy(alpha = 0.08f), RoundedCornerShape(8.dp))
-                            .padding(horizontal = 10.dp, vertical = 6.dp),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(
-                                imageVector = if (totalUnsynced > 0) Icons.Default.CloudSync else Icons.Default.CloudDone,
-                                contentDescription = null,
-                                tint = if (totalUnsynced > 0) BrandYellow else Color(0xFF81C784),
-                                modifier = Modifier.size(16.dp)
-                            )
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Text(
-                                text = if (totalUnsynced > 0) "$totalUnsynced Laporan belum sinkron ke Server" else "Semua laporan ter-sinkronisasi",
-                                color = Color.White,
-                                fontSize = 11.sp
-                            )
-                        }
-                        if (totalUnsynced > 0) {
-                            TextButton(
-                                onClick = {
-                                    viewModel.syncData { success ->
-                                        if (success) {
-                                            android.widget.Toast.makeText(context, "Sinkronisasi Cloud Berhasil!", android.widget.Toast.LENGTH_SHORT).show()
-                                        } else {
-                                            android.widget.Toast.makeText(context, "Gagal sinkron, pastikan mode online aktif!", android.widget.Toast.LENGTH_LONG).show()
-                                        }
-                                    }
-                                },
-                                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp)
+                        // Status Cut-Off Data Banner (07:00 s/d Saat Pengecekan)
+                        Surface(
+                            modifier = Modifier.fillMaxWidth(),
+                            color = Color.Black.copy(alpha = 0.25f),
+                            shape = RoundedCornerShape(10.dp),
+                            border = BorderStroke(1.dp, if (unitsMissingVibInput.isNotEmpty()) Color(0xFFFFB74D) else Color(0xFF81C784))
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(12.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.SpaceBetween
                             ) {
-                                Text("Sync Sekarang", color = BrandYellow, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    modifier = Modifier.weight(1f)
+                                ) {
+                                    Icon(
+                                        imageVector = if (unitsMissingVibInput.isNotEmpty()) Icons.Default.Schedule else Icons.Default.CheckCircle,
+                                        contentDescription = null,
+                                        tint = if (unitsMissingVibInput.isNotEmpty()) Color(0xFFFFCC80) else Color(0xFFA5D6A7),
+                                        modifier = Modifier.size(20.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(10.dp))
+                                    Column {
+                                        Text(
+                                            text = "Cut-Off Data: $checkRangeString",
+                                            fontWeight = FontWeight.Bold,
+                                            fontSize = 12.sp,
+                                            color = Color.White
+                                        )
+                                        Text(
+                                            text = if (unitsMissingVibInput.isNotEmpty())
+                                                "Menampilkan data dari jam 07:00 sampai saat pengecekan ($currentHourMinute) • ${unitsMissingVibInput.size} mesin belum input • Diperbarui lagi $nextRenewalText"
+                                            else
+                                                "Semua mesin lengkap diinput (07:00 s/d $currentHourMinute) • Diperbarui lagi $nextRenewalText",
+                                            fontSize = 10.sp,
+                                            color = Color.LightGray
+                                        )
+                                    }
+                                }
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.height(10.dp))
+
+                        // Cloud Sync Bar
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .background(Color.White.copy(alpha = 0.08f), RoundedCornerShape(8.dp))
+                                .padding(horizontal = 10.dp, vertical = 6.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(
+                                    imageVector = if (totalUnsynced > 0) Icons.Default.CloudSync else Icons.Default.CloudDone,
+                                    contentDescription = null,
+                                    tint = if (totalUnsynced > 0) BrandYellow else Color(0xFF81C784),
+                                    modifier = Modifier.size(16.dp)
+                                )
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text(
+                                    text = if (totalUnsynced > 0) "$totalUnsynced Laporan belum sinkron ke Server" else "Semua laporan ter-sinkronisasi",
+                                    color = Color.White,
+                                    fontSize = 11.sp
+                                )
+                            }
+                            if (totalUnsynced > 0) {
+                                TextButton(
+                                    onClick = {
+                                        viewModel.syncData { success ->
+                                            if (success) {
+                                                android.widget.Toast.makeText(context, "Sinkronisasi Cloud Berhasil!", android.widget.Toast.LENGTH_SHORT).show()
+                                            } else {
+                                                android.widget.Toast.makeText(context, "Gagal sinkron, pastikan mode online aktif!", android.widget.Toast.LENGTH_LONG).show()
+                                            }
+                                        }
+                                    },
+                                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp)
+                                ) {
+                                    Text("Sync Sekarang", color = BrandYellow, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                }
                             }
                         }
                     }
@@ -564,8 +645,9 @@ fun JakartaScreen(
             }
         }
 
-        // QUICK STATS SUMMARY TILES (DAPAT DIPILIH & SINKRON KE RINCIAN)
-        item {
+        if (activeReportCenterMenu == 0) {
+            // QUICK STATS SUMMARY TILES (DAPAT DIPILIH & SINKRON KE RINCIAN)
+            item {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -1546,8 +1628,36 @@ fun JakartaScreen(
             }
         }
 
-        item {
-            Spacer(modifier = Modifier.height(24.dp))
+            item {
+                Spacer(modifier = Modifier.height(24.dp))
+            }
+        } else {
+            // MENU 2: PAKET DATA FIREBASE SPARK
+            item {
+                PaketDataFirebaseSection(
+                    context = context,
+                    vibrationLogs = vibrationLogs,
+                    ciltChecks = ciltChecks,
+                    reliabilityChecks = reliabilityChecks,
+                    reports = reports,
+                    mentorLogs = mentorLogs,
+                    flushingLogs = flushingLogs,
+                    totalUnsynced = totalUnsynced,
+                    onSyncClick = {
+                        viewModel.syncData { success ->
+                            if (success) {
+                                android.widget.Toast.makeText(context, "Sinkronisasi Cloud Berhasil!", android.widget.Toast.LENGTH_SHORT).show()
+                            } else {
+                                android.widget.Toast.makeText(context, "Gagal sinkron, pastikan mode online aktif!", android.widget.Toast.LENGTH_LONG).show()
+                            }
+                        }
+                    }
+                )
+            }
+
+            item {
+                Spacer(modifier = Modifier.height(24.dp))
+            }
         }
     }
 

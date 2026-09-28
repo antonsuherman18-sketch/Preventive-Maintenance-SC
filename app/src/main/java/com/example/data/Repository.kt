@@ -230,7 +230,7 @@ class Repository(
                         bearingTemp = bearingTemp,
                         motorTemp = 55f,
                         alarmState = alarm,
-                        comments = "Historis sebelum perbaikan otonomous & PM",
+                        comments = "Historis sebelum perbaikan otonomous & PM [SC-01]",
                         isSynced = true
                     )
                 )
@@ -253,7 +253,7 @@ class Repository(
                         bearingTemp = bearingTemp,
                         motorTemp = 48f,
                         alarmState = "Normal",
-                        comments = "Vibrasi aman terkontrol, pasca penerapan PM & Greasing",
+                        comments = "Vibrasi aman terkontrol, pasca penerapan PM & Greasing [SC-01]",
                         isSynced = true
                     )
                 )
@@ -538,8 +538,8 @@ class Repository(
                     shift = "Shift Pagi",
                     unitName = "SC-01",
                     itemsJson = flushingTasksToJson(tasksPagi1),
-                    completedCount = 11,
-                    totalCount = 11,
+                    completedCount = 8,
+                    totalCount = 8,
                     notes = "Flushing rutin shift pagi selesai 100%, getaran normal dan air outlet bersih.",
                     isSynced = true
                 )
@@ -552,8 +552,8 @@ class Repository(
                     shift = "Shift Malam",
                     unitName = "SC-02",
                     itemsJson = flushingTasksToJson(tasksMalam1),
-                    completedCount = 11,
-                    totalCount = 11,
+                    completedCount = 8,
+                    totalCount = 8,
                     notes = "Flushing shift malam lancar, nozzle terpasang baik dan tidak ada kebocoran.",
                     isSynced = true
                 )
@@ -566,8 +566,8 @@ class Repository(
                     shift = "Shift Pagi",
                     unitName = "SC-03",
                     itemsJson = flushingTasksToJson(tasksPagi2),
-                    completedCount = 11,
-                    totalCount = 11,
+                    completedCount = 8,
+                    totalCount = 8,
                     notes = "Pelaksanaan flushing air panas sesuai prosedur, getaran stabil < 4.5 mm/s.",
                     isSynced = true
                 )

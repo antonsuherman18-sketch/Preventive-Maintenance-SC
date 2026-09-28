@@ -301,8 +301,8 @@ class FirestoreSyncManager(
                                         shift = doc.getString("shift") ?: "Shift Pagi",
                                         unitName = unitName,
                                         itemsJson = doc.getString("itemsJson") ?: "",
-                                        completedCount = doc.getLong("completedCount")?.toInt() ?: 11,
-                                        totalCount = doc.getLong("totalCount")?.toInt() ?: 11,
+                                        completedCount = doc.getLong("completedCount")?.toInt() ?: 8,
+                                        totalCount = doc.getLong("totalCount")?.toInt() ?: 8,
                                         notes = doc.getString("notes") ?: "",
                                         isSynced = true
                                     )

@@ -78,6 +78,10 @@ class CentrifugeViewModel(application: Application, private val repository: Repo
     }
 
     fun deleteReport(report: AbnormalityReport) {
+        val ageMs = System.currentTimeMillis() - report.timestamp
+        if (ageMs > 5 * 60 * 1000L) {
+            return
+        }
         viewModelScope.launch {
             repository.deleteAbnormalityReport(report)
         }
