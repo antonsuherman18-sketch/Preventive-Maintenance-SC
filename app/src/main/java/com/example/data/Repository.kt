@@ -218,7 +218,7 @@ class Repository(
                 val devVib = (7.5f + Math.random() * 2.0).toFloat() // 7.5 to 9.5 mm/s
                 val ndevVib = (6.0f + Math.random() * 1.5).toFloat()
                 val bearingTemp = (68f + Math.random() * 10).toFloat() // 68 to 78 C
-                val alarm = if (devVib > 8.8f) "Critical" else "Warning"
+                val alarm = if (devVib > 7.0f) "Critical" else "Warning"
                 
                 vibrationDao.insertLog(
                     VibrationLog(

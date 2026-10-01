@@ -127,7 +127,8 @@ data class VibrationLog(
     val motorBearingVibration: Float = 0f,
     val gearboxBearingVibration: Float = 0f,
     val bowlVibration: Float = 0f,
-    val bearingTemp: Float, // C (normal < 70)
+    val bearingTemp: Float, // C (Suhu Bearing 1 - dekat Pulley)
+    val bearingTemp2: Float = 0f, // C (Suhu Bearing 2 - dekat Gland Packing)
     val motorTemp: Float = 0f,
     val isGreased: Boolean = false,
     val greasingStatus: String = if (isGreased) "Ya" else "Tidak",
@@ -137,7 +138,11 @@ data class VibrationLog(
     val machineStatus: String = "Operasi", // Operasi, Standby, Rusak
     val comments: String = "",
     val isSynced: Boolean = false
-)
+) {
+    @get:Ignore
+    val effectiveBearingTemp2: Float
+        get() = if (bearingTemp2 > 0f) bearingTemp2 else bearingTemp
+}
 
 @Entity(tableName = "flushing_logs")
 data class FlushingLog(

@@ -40,6 +40,22 @@ import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.*
 
+enum class AlertSeverity {
+    WARNING, CRITICAL, INFO
+}
+
+data class VibAlertReason(
+    val text: String,
+    val severity: AlertSeverity
+)
+
+data class VibAlert(
+    val unitId: String,
+    val log: VibrationLog,
+    val reasons: List<VibAlertReason>,
+    val maxSeverity: AlertSeverity
+)
+
 @Composable
 fun JakartaScreen(
     isOnline: Boolean,
@@ -285,46 +301,117 @@ fun JakartaScreen(
     val missingVibInputCount = unitsMissingVibInput.size
 
     // Units with critical vibration or temperature, ungreased, leak, abnormal sound
-    data class VibAlert(
-        val unitId: String,
-        val log: VibrationLog,
-        val reasons: List<String>
-    )
-
     val vibAlerts = mutableListOf<VibAlert>()
     units.forEach { unitId ->
         val logsForUnit = unitsWithVibToday[unitId] ?: emptyList()
         logsForUnit.forEach { log ->
-            val reasons = mutableListOf<String>()
-            val maxVib = maxOf(log.driveEndVibration, log.nonDriveEndVibration, log.motorBearingVibration, log.gearboxBearingVibration, log.bowlVibration)
-            val maxTemp = maxOf(log.bearingTemp, log.motorTemp)
+            val reasons = mutableListOf<VibAlertReason>()
 
-            if (maxVib >= 8.8f || log.alarmState.equals("Critical", ignoreCase = true)) {
-                reasons.add("Vibrasi Kritikal (${String.format(Locale.US, "%.1f", maxVib)} mm/s > 8.8 mm/s)")
-            } else if (maxVib >= 4.5f || log.alarmState.equals("Warning", ignoreCase = true)) {
-                reasons.add("Vibrasi Warning (${String.format(Locale.US, "%.1f", maxVib)} mm/s)")
+            // 1. Pengecekan Vibrasi:
+            // - Warning jika > 4.5 mm/s dan <= 7.0 mm/s (background kuning)
+            // - Critikal jika > 7.0 mm/s (background merah)
+            val vibPoints = listOf(
+                "Axial 1" to log.driveEndVibration,
+                "Axial 2" to log.nonDriveEndVibration,
+                "Horizontal" to log.motorBearingVibration,
+                "Vertikal" to log.gearboxBearingVibration
+            )
+            vibPoints.forEach { (pointName, valVib) ->
+                if (valVib > 7.0f) {
+                    reasons.add(
+                        VibAlertReason(
+                            text = "Critikal: Vibrasi $pointName (${String.format(Locale.US, "%.1f", valVib)} mm/s > 7.0 mm/s)",
+                            severity = AlertSeverity.CRITICAL
+                        )
+                    )
+                } else if (valVib > 4.5f) {
+                    reasons.add(
+                        VibAlertReason(
+                            text = "Warning: Vibrasi $pointName (${String.format(Locale.US, "%.1f", valVib)} mm/s)",
+                            severity = AlertSeverity.WARNING
+                        )
+                    )
+                }
             }
 
-            if (maxTemp >= 75f) {
-                reasons.add("Suhu Bearing/Motor Kritikal (${String.format(Locale.US, "%.1f", maxTemp)}°C > 75°C)")
-            } else if (maxTemp >= 65f) {
-                reasons.add("Suhu Bearing/Motor Warning (${String.format(Locale.US, "%.1f", maxTemp)}°C)")
+            // Fallback status alarm jika poin individual tidak tercatat
+            if (reasons.isEmpty() && log.alarmState.equals("Critical", ignoreCase = true)) {
+                val maxVib = maxOf(log.driveEndVibration, log.nonDriveEndVibration, log.motorBearingVibration, log.gearboxBearingVibration)
+                reasons.add(
+                    VibAlertReason(
+                        text = "Critikal: Status Log Critical (${String.format(Locale.US, "%.1f", maxVib)} mm/s)",
+                        severity = AlertSeverity.CRITICAL
+                    )
+                )
+            } else if (reasons.isEmpty() && log.alarmState.equals("Warning", ignoreCase = true)) {
+                val maxVib = maxOf(log.driveEndVibration, log.nonDriveEndVibration, log.motorBearingVibration, log.gearboxBearingVibration)
+                reasons.add(
+                    VibAlertReason(
+                        text = "Warning: Status Log Warning (${String.format(Locale.US, "%.1f", maxVib)} mm/s)",
+                        severity = AlertSeverity.WARNING
+                    )
+                )
             }
 
+            // 2. Pengecekan Suhu:
+            // - "Critical" jika > 80 derajat (background merah)
+            // - "Warning" jika > 70 derajat dan <= 80 (background kuning)
+            val tempPoints = listOf(
+                "Suhu Bearing 1" to log.bearingTemp,
+                "Suhu Bearing 2" to log.effectiveBearingTemp2,
+                "Suhu Motor" to log.motorTemp
+            )
+            tempPoints.forEach { (pointName, valTemp) ->
+                if (valTemp > 80.0f) {
+                    reasons.add(
+                        VibAlertReason(
+                            text = "Critical: $pointName (${String.format(Locale.US, "%.1f", valTemp)}°C > 80°C)",
+                            severity = AlertSeverity.CRITICAL
+                        )
+                    )
+                } else if (valTemp > 70.0f) {
+                    reasons.add(
+                        VibAlertReason(
+                            text = "Warning: $pointName (${String.format(Locale.US, "%.1f", valTemp)}°C)",
+                            severity = AlertSeverity.WARNING
+                        )
+                    )
+                }
+            }
+
+            // 3. Pengecekan Kondisi Observasi
             if (!log.isGreased && log.greasingStatus != "Belum Masuk Jadwal") {
-                reasons.add("Unit belum dilakukan greasing")
+                reasons.add(
+                    VibAlertReason(
+                        text = "Warning: Unit belum dilakukan greasing",
+                        severity = AlertSeverity.WARNING
+                    )
+                )
             }
 
             if (log.hasLeakage) {
-                reasons.add("Terdapat kebocoran oli / cairan")
+                reasons.add(
+                    VibAlertReason(
+                        text = "Warning: Terdapat kebocoran oli / cairan",
+                        severity = AlertSeverity.WARNING
+                    )
+                )
             }
 
             if (log.soundState.equals("Abnormal", ignoreCase = true)) {
-                reasons.add("Suara abnormal terdeteksi")
+                reasons.add(
+                    VibAlertReason(
+                        text = "Warning: Suara abnormal terdeteksi",
+                        severity = AlertSeverity.WARNING
+                    )
+                )
             }
 
             if (reasons.isNotEmpty()) {
-                vibAlerts.add(VibAlert(unitId, log, reasons))
+                val maxSev = if (reasons.any { it.severity == AlertSeverity.CRITICAL }) AlertSeverity.CRITICAL
+                             else if (reasons.any { it.severity == AlertSeverity.WARNING }) AlertSeverity.WARNING
+                             else AlertSeverity.INFO
+                vibAlerts.add(VibAlert(unitId, log, reasons, maxSev))
             }
         }
     }
@@ -831,21 +918,67 @@ fun JakartaScreen(
                                             color = Color(0xFFC62828)
                                         )
                                         vibAlerts.forEach { alert ->
+                                            val isCrit = alert.maxSeverity == AlertSeverity.CRITICAL
+                                            val cardBg = if (isCrit) Color(0xFFFFF5F5) else Color(0xFFFFFDE7)
+                                            val cardBorder = if (isCrit) Color(0xFFFFCDD2) else Color(0xFFFFF59D)
+                                            val titleColor = if (isCrit) Color(0xFFB71C1C) else Color(0xFFB45309)
+
                                             Surface(
-                                                color = Color(0xFFFFEBEE),
+                                                color = cardBg,
                                                 shape = RoundedCornerShape(8.dp),
-                                                border = BorderStroke(1.dp, Color(0xFFFFCDD2)),
+                                                border = BorderStroke(1.dp, cardBorder),
                                                 modifier = Modifier.fillMaxWidth()
                                             ) {
-                                                Column(modifier = Modifier.padding(8.dp)) {
-                                                    Text(
-                                                        text = "Unit: ${alert.unitId}",
-                                                        fontSize = 11.sp,
-                                                        fontWeight = FontWeight.Bold,
-                                                        color = Color(0xFFB71C1C)
-                                                    )
+                                                Column(modifier = Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                                                    Row(
+                                                        modifier = Modifier.fillMaxWidth(),
+                                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                                        verticalAlignment = Alignment.CenterVertically
+                                                    ) {
+                                                        Text(
+                                                            text = "Unit: ${alert.unitId}",
+                                                            fontSize = 12.sp,
+                                                            fontWeight = FontWeight.Bold,
+                                                            color = titleColor
+                                                        )
+                                                        Surface(
+                                                            color = if (isCrit) Color(0xFFFFCDD2) else Color(0xFFFFF9C4),
+                                                            shape = RoundedCornerShape(4.dp),
+                                                            border = BorderStroke(0.5.dp, if (isCrit) Color(0xFFE53935) else Color(0xFFFBC02D))
+                                                        ) {
+                                                            Text(
+                                                                text = if (isCrit) "CRITICAL" else "WARNING",
+                                                                fontSize = 9.sp,
+                                                                fontWeight = FontWeight.Bold,
+                                                                color = if (isCrit) Color(0xFFB71C1C) else Color(0xFFB45309),
+                                                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                                            )
+                                                        }
+                                                    }
                                                     alert.reasons.forEach { r ->
-                                                        Text("• $r", fontSize = 10.5.sp, color = Color(0xFF424242))
+                                                        val (badgeBg, badgeBorder, badgeTextColor) = when (r.severity) {
+                                                            AlertSeverity.CRITICAL -> Triple(Color(0xFFFFEBEE), Color(0xFFEF9A9A), Color(0xFFB71C1C)) // Background Merah
+                                                            AlertSeverity.WARNING -> Triple(Color(0xFFFFF9C4), Color(0xFFFFF176), Color(0xFF78350F)) // Background Kuning
+                                                            AlertSeverity.INFO -> Triple(Color(0xFFFFF3E0), Color(0xFFFFCC80), Color(0xFFBF360C))
+                                                        }
+                                                        Surface(
+                                                            color = badgeBg,
+                                                            shape = RoundedCornerShape(6.dp),
+                                                            border = BorderStroke(0.8.dp, badgeBorder),
+                                                            modifier = Modifier.fillMaxWidth()
+                                                        ) {
+                                                            Row(
+                                                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 5.dp),
+                                                                verticalAlignment = Alignment.CenterVertically
+                                                            ) {
+                                                                Text(
+                                                                    text = "• ${r.text}",
+                                                                    fontSize = 11.sp,
+                                                                    fontWeight = FontWeight.SemiBold,
+                                                                    color = badgeTextColor
+                                                                )
+                                                            }
+                                                        }
                                                     }
                                                 }
                                             }

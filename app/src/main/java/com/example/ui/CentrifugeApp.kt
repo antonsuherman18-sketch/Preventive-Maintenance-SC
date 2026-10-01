@@ -410,9 +410,9 @@ data class CentrifugeUnitState(
     val baseBearingTemp: Float,
     val baseMotorTemp: Float,
     val warningVib: Float = 4.5f,
-    val criticalVib: Float = 8.8f,
-    val warningTemp: Float = 65.0f,
-    val criticalTemp: Float = 75.0f,
+    val criticalVib: Float = 7.0f,
+    val warningTemp: Float = 70.0f,
+    val criticalTemp: Float = 80.0f,
     val devVibHistory: List<Float> = emptyList(),
     val ndevVibHistory: List<Float> = emptyList(),
     val bearingTempHistory: List<Float> = emptyList(),
@@ -435,6 +435,7 @@ data class UnitReportValues(
     val bowlVib: Float?,
     val bearingTemp: Float?,
     val motorTemp: Float?,
+    val bearingTemp2: Float? = null,
     val isGreased: Boolean? = null,
     val soundState: String? = null,
     val hasLeakage: Boolean? = null,
@@ -570,6 +571,7 @@ fun getUnitSummaryMetrics(
                 val gAvg = todayLogs.map { it.gearboxBearingVibration }.average().toFloat()
                 val bAvg = todayLogs.map { it.bowlVibration }.average().toFloat()
                 val bTempAvg = todayLogs.map { it.bearingTemp }.average().toFloat()
+                val bTemp2Avg = todayLogs.map { it.effectiveBearingTemp2 }.average().toFloat()
                 val mTempAvg = todayLogs.map { it.motorTemp }.average().toFloat()
 
                 val isGreased = latestTodayLog?.isGreased ?: true
@@ -579,7 +581,7 @@ fun getUnitSummaryMetrics(
 
                 reportValues = UnitReportValues(
                     dev = deAvg, nde = ndeAvg, motorVib = mAvg, gearboxVib = gAvg, bowlVib = bAvg,
-                    bearingTemp = bTempAvg, motorTemp = mTempAvg,
+                    bearingTemp = bTempAvg, motorTemp = mTempAvg, bearingTemp2 = bTemp2Avg,
                     isGreased = if (greasingStatus == "Belum Masuk Jadwal") true else isGreased,
                     soundState = soundState,
                     hasLeakage = hasLeakage,
@@ -592,12 +594,12 @@ fun getUnitSummaryMetrics(
                     leakageRatioText = if (hasLeakage) "Ada Kebocoran" else "Tidak Ada"
                 )
                 avgVib = listOf(deAvg, ndeAvg, mAvg, gAvg, bAvg).average().toFloat()
-                avgTemp = listOf(bTempAvg, mTempAvg).average().toFloat()
+                avgTemp = listOf(bTempAvg, bTemp2Avg, mTempAvg).average().toFloat()
             } else {
                 // Belum ada dilakukan pengukuran -> nilai yang ada di masing-masing SC semuanya nol
                 reportValues = UnitReportValues(
                     dev = 0.0f, nde = 0.0f, motorVib = 0.0f, gearboxVib = 0.0f, bowlVib = 0.0f,
-                    bearingTemp = 0.0f, motorTemp = 0.0f,
+                    bearingTemp = 0.0f, motorTemp = 0.0f, bearingTemp2 = 0.0f,
                     isGreased = false, soundState = "-", hasLeakage = false,
                     greasingRatioText = "Belum Ada Pengukuran",
                     soundRatioText = "Belum Ada Pengukuran",
@@ -615,6 +617,7 @@ fun getUnitSummaryMetrics(
                 val gAvg = weeklyLogs.map { it.gearboxBearingVibration }.average().toFloat()
                 val bAvg = weeklyLogs.map { it.bowlVibration }.average().toFloat()
                 val bTempAvg = weeklyLogs.map { it.bearingTemp }.average().toFloat()
+                val bTemp2Avg = weeklyLogs.map { it.effectiveBearingTemp2 }.average().toFloat()
                 val mTempAvg = weeklyLogs.map { it.motorTemp }.average().toFloat()
 
                 val greasedCount = weeklyLogs.count { it.isGreased }
@@ -624,7 +627,7 @@ fun getUnitSummaryMetrics(
 
                 reportValues = UnitReportValues(
                     dev = deAvg, nde = ndeAvg, motorVib = mAvg, gearboxVib = gAvg, bowlVib = bAvg,
-                    bearingTemp = bTempAvg, motorTemp = mTempAvg,
+                    bearingTemp = bTempAvg, motorTemp = mTempAvg, bearingTemp2 = bTemp2Avg,
                     isGreased = greasedCount >= (total * 0.7),
                     soundState = if (abnormalCount == 0) "Normal" else "Abnormal ($abnormalCount)",
                     hasLeakage = leakCount > 0,
@@ -633,7 +636,7 @@ fun getUnitSummaryMetrics(
                     leakageRatioText = if (leakCount == 0) "Nihil (0)" else "$leakCount temuan"
                 )
                 avgVib = listOf(deAvg, ndeAvg, mAvg, gAvg, bAvg).average().toFloat()
-                avgTemp = listOf(bTempAvg, mTempAvg).average().toFloat()
+                avgTemp = listOf(bTempAvg, bTemp2Avg, mTempAvg).average().toFloat()
             } else if (unit.isRunning) {
                 val avgDe = if (unit.weeklyDevVibHistory.isNotEmpty()) unit.weeklyDevVibHistory.average().toFloat() else baseDe
                 val avgNde = if (unit.weeklyNdevVibHistory.isNotEmpty()) unit.weeklyNdevVibHistory.average().toFloat() else baseNde
@@ -644,7 +647,7 @@ fun getUnitSummaryMetrics(
 
                 reportValues = UnitReportValues(
                     dev = avgDe, nde = avgNde, motorVib = avgMotor, gearboxVib = avgGearbox, bowlVib = avgBowl,
-                    bearingTemp = avgBearing, motorTemp = baseMotorTemp,
+                    bearingTemp = avgBearing, motorTemp = baseMotorTemp, bearingTemp2 = avgBearing,
                     isGreased = true,
                     soundState = "Normal",
                     hasLeakage = false,
@@ -657,6 +660,7 @@ fun getUnitSummaryMetrics(
             } else {
                 reportValues = UnitReportValues(
                     0f, 0f, 0f, 0f, 0f, 0f, 0f,
+                    bearingTemp2 = 0f,
                     isGreased = false, soundState = "Standby", hasLeakage = false,
                     greasingRatioText = "Standby", soundRatioText = "Standby", leakageRatioText = "Nihil"
                 )
@@ -672,6 +676,7 @@ fun getUnitSummaryMetrics(
                 val gAvg = monthlyLogs.map { it.gearboxBearingVibration }.average().toFloat()
                 val bAvg = monthlyLogs.map { it.bowlVibration }.average().toFloat()
                 val bTempAvg = monthlyLogs.map { it.bearingTemp }.average().toFloat()
+                val bTemp2Avg = monthlyLogs.map { it.effectiveBearingTemp2 }.average().toFloat()
                 val mTempAvg = monthlyLogs.map { it.motorTemp }.average().toFloat()
 
                 val greasedCount = monthlyLogs.count { it.isGreased }
@@ -681,7 +686,7 @@ fun getUnitSummaryMetrics(
 
                 reportValues = UnitReportValues(
                     dev = deAvg, nde = ndeAvg, motorVib = mAvg, gearboxVib = gAvg, bowlVib = bAvg,
-                    bearingTemp = bTempAvg, motorTemp = mTempAvg,
+                    bearingTemp = bTempAvg, motorTemp = mTempAvg, bearingTemp2 = bTemp2Avg,
                     isGreased = greasedCount >= (total * 0.7),
                     soundState = if (abnormalCount == 0) "Normal" else "Abnormal ($abnormalCount)",
                     hasLeakage = leakCount > 0,
@@ -690,7 +695,7 @@ fun getUnitSummaryMetrics(
                     leakageRatioText = if (leakCount == 0) "Nihil (0)" else "$leakCount temuan"
                 )
                 avgVib = listOf(deAvg, ndeAvg, mAvg, gAvg, bAvg).average().toFloat()
-                avgTemp = listOf(bTempAvg, mTempAvg).average().toFloat()
+                avgTemp = listOf(bTempAvg, bTemp2Avg, mTempAvg).average().toFloat()
             } else if (unit.isRunning) {
                 val avgDe = if (unit.monthlyDevVibHistory.isNotEmpty()) unit.monthlyDevVibHistory.average().toFloat() else baseDe
                 val avgNde = if (unit.monthlyNdevVibHistory.isNotEmpty()) unit.monthlyNdevVibHistory.average().toFloat() else baseNde
@@ -701,7 +706,7 @@ fun getUnitSummaryMetrics(
 
                 reportValues = UnitReportValues(
                     dev = avgDe, nde = avgNde, motorVib = avgMotor, gearboxVib = avgGearbox, bowlVib = avgBowl,
-                    bearingTemp = avgBearing, motorTemp = baseMotorTemp,
+                    bearingTemp = avgBearing, motorTemp = baseMotorTemp, bearingTemp2 = avgBearing,
                     isGreased = true,
                     soundState = "Normal",
                     hasLeakage = false,
@@ -714,6 +719,7 @@ fun getUnitSummaryMetrics(
             } else {
                 reportValues = UnitReportValues(
                     0f, 0f, 0f, 0f, 0f, 0f, 0f,
+                    bearingTemp2 = 0f,
                     isGreased = false, soundState = "Standby", hasLeakage = false,
                     greasingRatioText = "Standby", soundRatioText = "Standby", leakageRatioText = "Nihil"
                 )
@@ -730,6 +736,7 @@ fun getUnitSummaryMetrics(
                 val gAvg = customLogs.map { it.gearboxBearingVibration }.average().toFloat()
                 val bAvg = customLogs.map { it.bowlVibration }.average().toFloat()
                 val bTempAvg = customLogs.map { it.bearingTemp }.average().toFloat()
+                val bTemp2Avg = customLogs.map { it.effectiveBearingTemp2 }.average().toFloat()
                 val mTempAvg = customLogs.map { it.motorTemp }.average().toFloat()
 
                 val greasedCount = customLogs.count { it.isGreased }
@@ -739,7 +746,7 @@ fun getUnitSummaryMetrics(
 
                 reportValues = UnitReportValues(
                     dev = deAvg, nde = ndeAvg, motorVib = mAvg, gearboxVib = gAvg, bowlVib = bAvg,
-                    bearingTemp = bTempAvg, motorTemp = mTempAvg,
+                    bearingTemp = bTempAvg, motorTemp = mTempAvg, bearingTemp2 = bTemp2Avg,
                     isGreased = greasedCount >= (total * 0.7),
                     soundState = if (abnormalCount == 0) "Normal" else "Abnormal ($abnormalCount)",
                     hasLeakage = leakCount > 0,
@@ -748,11 +755,11 @@ fun getUnitSummaryMetrics(
                     leakageRatioText = if (leakCount == 0) "Nihil (0)" else "$leakCount temuan"
                 )
                 avgVib = listOf(deAvg, ndeAvg, mAvg, gAvg, bAvg).average().toFloat()
-                avgTemp = listOf(bTempAvg, mTempAvg).average().toFloat()
+                avgTemp = listOf(bTempAvg, bTemp2Avg, mTempAvg).average().toFloat()
             } else {
                 reportValues = UnitReportValues(
                     dev = 0.0f, nde = 0.0f, motorVib = 0.0f, gearboxVib = 0.0f, bowlVib = 0.0f,
-                    bearingTemp = 0.0f, motorTemp = 0.0f,
+                    bearingTemp = 0.0f, motorTemp = 0.0f, bearingTemp2 = 0.0f,
                     isGreased = false, soundState = "-", hasLeakage = false,
                     greasingRatioText = "Belum Ada Pengukuran",
                     soundRatioText = "Belum Ada Pengukuran",
@@ -894,7 +901,8 @@ fun ReportRowItem(
     unit: String,
     threshold: Float,
     isDegree: Boolean = false,
-    infoText: String? = null
+    infoText: String? = null,
+    warningThreshold: Float? = null
 ) {
     var showInfoDialog by remember { mutableStateOf(false) }
 
@@ -955,11 +963,27 @@ fun ReportRowItem(
 
     val isZeroOrNull = value == null || value == 0f
     val isRed = !isZeroOrNull && (value!! > threshold)
-    val isGreen = !isZeroOrNull && (value!! <= threshold)
+    val isYellow = !isZeroOrNull && !isRed && (warningThreshold != null && value!! > warningThreshold)
+    val isGreen = !isZeroOrNull && !isRed && !isYellow
 
-    val bgColor = if (isZeroOrNull) Color(0xFFF1F5F9) else if (isRed) Color(0xFFFFCDD2) else Color(0xFFC8E6C9)
-    val borderColor = if (isZeroOrNull) Color(0xFFCBD5E1) else if (isRed) Color(0xFFD32F2F) else Color(0xFF2E7D32)
-    val textColor = if (isZeroOrNull) Color.Gray else if (isRed) Color(0xFFB71C1C) else Color(0xFF1B5E20)
+    val bgColor = when {
+        isZeroOrNull -> Color(0xFFF1F5F9)
+        isRed -> Color(0xFFFFCDD2)
+        isYellow -> Color(0xFFFFF9C4) // Background kuning
+        else -> Color(0xFFC8E6C9)
+    }
+    val borderColor = when {
+        isZeroOrNull -> Color(0xFFCBD5E1)
+        isRed -> Color(0xFFD32F2F)
+        isYellow -> Color(0xFFFBC02D)
+        else -> Color(0xFF2E7D32)
+    }
+    val textColor = when {
+        isZeroOrNull -> Color.Gray
+        isRed -> Color(0xFFB71C1C)
+        isYellow -> Color(0xFF78350F)
+        else -> Color(0xFF1B5E20)
+    }
 
     Row(
         modifier = Modifier
@@ -1022,14 +1046,14 @@ fun ReportRowItem(
                 },
                 fontSize = 12.sp,
                 fontWeight = FontWeight.Bold,
-                color = if (isRed) Color(0xFFB71C1C) else if (isGreen) Color(0xFF1B5E20) else Color.Gray
+                color = if (isRed) Color(0xFFB71C1C) else if (isYellow) Color(0xFF78350F) else if (isGreen) Color(0xFF1B5E20) else Color.Gray
             )
         } else {
             Text(
                 text = unit,
                 fontSize = 12.sp,
                 fontWeight = FontWeight.Bold,
-                color = if (isRed) Color(0xFFB71C1C) else if (isGreen) Color(0xFF1B5E20) else Color.Gray
+                color = if (isRed) Color(0xFFB71C1C) else if (isYellow) Color(0xFF78350F) else if (isGreen) Color(0xFF1B5E20) else Color.Gray
             )
         }
     }
@@ -1042,10 +1066,10 @@ fun ReportStatusRowItem(
     valueText: String?,
     isGood: Boolean?
 ) {
-    val isMeasured = valueText != null && isGood != null
-    val bgColor = if (!isMeasured) Color(0xFFF1F5F9) else if (isGood == true) Color(0xFFC8E6C9) else Color(0xFFFFCDD2)
-    val borderColor = if (!isMeasured) Color(0xFFCBD5E1) else if (isGood == true) Color(0xFF2E7D32) else Color(0xFFD32F2F)
-    val textColor = if (!isMeasured) Color.Gray else if (isGood == true) Color(0xFF1B5E20) else Color(0xFFB71C1C)
+    val isUnmeasured = valueText == null || valueText.contains("Belum Ada", ignoreCase = true) || isGood == null
+    val bgColor = if (isUnmeasured) Color(0xFFF1F5F9) else if (isGood == true) Color(0xFFC8E6C9) else Color(0xFFFFCDD2)
+    val borderColor = if (isUnmeasured) Color(0xFFCBD5E1) else if (isGood == true) Color(0xFF2E7D32) else Color(0xFFD32F2F)
+    val textColor = if (isUnmeasured) Color.Gray else if (isGood == true) Color(0xFF1B5E20) else Color(0xFFB71C1C)
 
     Row(
         modifier = Modifier
@@ -1137,7 +1161,8 @@ fun CentrifugeTrendCanvas(
                 strokeWidth = 3f
             )
 
-            // Plot DE Vibration Line Segments with dynamic Critical Red coloring
+            // Plot DE Vibration Line Segments with dynamic Critical Red coloring & bright green standard
+            val brightGreenColor = Color(0xFF00C853) // Hijau terang
             for (index in 1 until devVibPoints.size) {
                 val prevVib = devVibPoints[index - 1]
                 val currVib = devVibPoints[index]
@@ -1146,9 +1171,9 @@ fun CentrifugeTrendCanvas(
                 val currX = getX(index)
                 val currY = (height - (currVib / maxScale).coerceIn(0f, 1f) * height).coerceIn(16f, height - 16f)
 
-                val isSegCritical = currVib >= selectedUnit.criticalVib || prevVib >= selectedUnit.criticalVib
-                val isSegWarning = currVib >= selectedUnit.warningVib || prevVib >= selectedUnit.warningVib
-                val segColor = if (isSegCritical) BrandRed else if (isSegWarning) BrandOrange else BrandGreen
+                val isSegCritical = currVib > selectedUnit.criticalVib || prevVib > selectedUnit.criticalVib
+                val isSegWarning = currVib > selectedUnit.warningVib || prevVib > selectedUnit.warningVib
+                val segColor = if (isSegCritical) BrandRed else if (isSegWarning) BrandOrange else brightGreenColor
                 val strokeW = if (isSegCritical) 5.5f else 4f
 
                 drawLine(
@@ -1164,9 +1189,9 @@ fun CentrifugeTrendCanvas(
             devVibPoints.forEachIndexed { index, valVib ->
                 val x = getX(index)
                 val y = (height - (valVib / maxScale).coerceIn(0f, 1f) * height).coerceIn(16f, height - 16f)
-                val isCritical = valVib >= selectedUnit.criticalVib
-                val isWarning = valVib >= selectedUnit.warningVib
-                val dotColor = if (isCritical) BrandRed else if (isWarning) BrandOrange else BrandGreen
+                val isCritical = valVib > selectedUnit.criticalVib
+                val isWarning = valVib > selectedUnit.warningVib
+                val dotColor = if (isCritical) BrandRed else if (isWarning) BrandOrange else brightGreenColor
                 val dotRadius = if (isCritical) 6.5f else 4.5f
 
                 if (isCritical) {
@@ -1229,7 +1254,7 @@ fun CentrifugeTrendCanvas(
                 )
             }
 
-            // Draw Vibration measurement numbers
+            // Draw Vibration measurement numbers & labels
             drawIntoCanvas { canvas ->
                 val paintCritical = Paint().apply {
                     color = android.graphics.Color.rgb(186, 26, 26) // BrandRed
@@ -1246,7 +1271,7 @@ fun CentrifugeTrendCanvas(
                     isAntiAlias = true
                 }
                 val paintDe = Paint().apply {
-                    color = android.graphics.Color.rgb(0, 106, 106) // BrandGreen
+                    color = android.graphics.Color.rgb(0, 180, 50) // Bright vibrant green
                     textSize = if (isEnlarged) 26f else 24f
                     typeface = Typeface.DEFAULT_BOLD
                     textAlign = Paint.Align.CENTER
@@ -1260,11 +1285,55 @@ fun CentrifugeTrendCanvas(
                     isAntiAlias = true
                 }
 
+                // Threshold labels on lines
+                val paintCriticalThresh = Paint().apply {
+                    color = android.graphics.Color.rgb(186, 26, 26)
+                    textSize = if (isEnlarged) 21f else 18f
+                    typeface = Typeface.DEFAULT_BOLD
+                    textAlign = Paint.Align.RIGHT
+                    isAntiAlias = true
+                }
+                val paintWarningThresh = Paint().apply {
+                    color = android.graphics.Color.rgb(217, 119, 6)
+                    textSize = if (isEnlarged) 21f else 18f
+                    typeface = Typeface.DEFAULT_BOLD
+                    textAlign = Paint.Align.RIGHT
+                    isAntiAlias = true
+                }
+                canvas.nativeCanvas.drawText("Critikal (> 7.0 mm/s)", width - 8f, (criticalY - 6f).coerceAtLeast(14f), paintCriticalThresh)
+                canvas.nativeCanvas.drawText("Warning (4.5 mm/s)", width - 8f, (warningY - 6f).coerceAtLeast(14f), paintWarningThresh)
+
+                // Keterangan tulisan "Axial 1" dan "Axial 2" pada awal garis grafik
+                if (devVibPoints.isNotEmpty()) {
+                    val x0 = getX(0)
+                    val yDe0 = (height - (devVibPoints.first() / maxScale).coerceIn(0f, 1f) * height).coerceIn(16f, height - 16f)
+                    val firstNdeVal = ndevVibPoints.firstOrNull() ?: devVibPoints.first()
+                    val yNde0 = (height - (firstNdeVal / maxScale).coerceIn(0f, 1f) * height).coerceIn(16f, height - 16f)
+
+                    val paintStartAxial1 = Paint().apply {
+                        color = android.graphics.Color.rgb(0, 180, 50) // Hijau Terang
+                        textSize = if (isEnlarged) 24f else 20f
+                        typeface = Typeface.DEFAULT_BOLD
+                        textAlign = Paint.Align.LEFT
+                        isAntiAlias = true
+                    }
+                    val paintStartAxial2 = Paint().apply {
+                        color = android.graphics.Color.rgb(71, 85, 105) // Abu-Abu Slate
+                        textSize = if (isEnlarged) 24f else 20f
+                        typeface = Typeface.DEFAULT_BOLD
+                        textAlign = Paint.Align.LEFT
+                        isAntiAlias = true
+                    }
+
+                    canvas.nativeCanvas.drawText("Axial 1", x0 + 6f, (yDe0 - 24f).coerceAtLeast(16f), paintStartAxial1)
+                    canvas.nativeCanvas.drawText("Axial 2", x0 + 6f, (yNde0 + 40f).coerceAtMost(height - 4f), paintStartAxial2)
+                }
+
                 devVibPoints.forEachIndexed { index, valVib ->
                     val x = getX(index)
                     val yDe = (height - (valVib / maxScale).coerceIn(0f, 1f) * height).coerceIn(16f, height - 16f)
                     val labelDe = String.format(Locale.US, "%.1f", valVib)
-                    val p = if (valVib >= selectedUnit.criticalVib) paintCritical else if (valVib >= selectedUnit.warningVib) paintWarning else paintDe
+                    val p = if (valVib > selectedUnit.criticalVib) paintCritical else if (valVib > selectedUnit.warningVib) paintWarning else paintDe
                     canvas.nativeCanvas.drawText(labelDe, x, (yDe - 10f).coerceAtLeast(20f), p)
                 }
 
@@ -1272,7 +1341,7 @@ fun CentrifugeTrendCanvas(
                     val x = getX(index)
                     val yNde = (height - (valNde / maxScale).coerceIn(0f, 1f) * height).coerceIn(16f, height - 16f)
                     val labelNde = String.format(Locale.US, "%.1f", valNde)
-                    val p = if (valNde >= selectedUnit.criticalVib) paintCritical else paintNde
+                    val p = if (valNde > selectedUnit.criticalVib) paintCritical else paintNde
                     canvas.nativeCanvas.drawText(labelNde, x, (yNde + 22f).coerceAtMost(height - 4f), p)
                 }
             }
@@ -1654,7 +1723,7 @@ fun TrendChartLegend(trendTabSelection: Int) {
     ) {
         when (trendTabSelection) {
             0 -> {
-                Text("Garis: Axial 1 / DE (Hijau), Axial 2 / NDE (Abu-Abu)", fontSize = 8.sp, color = Color.DarkGray)
+                Text("Garis: Axial 1 (Hijau Terang), Axial 2 (Abu-Abu)", fontSize = 8.sp, color = Color.DarkGray)
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Box(modifier = Modifier.size(8.dp).background(BrandYellow).clip(CircleShape))
                     Spacer(modifier = Modifier.width(4.dp))
@@ -1662,19 +1731,19 @@ fun TrendChartLegend(trendTabSelection: Int) {
                     Spacer(modifier = Modifier.width(8.dp))
                     Box(modifier = Modifier.size(8.dp).background(BrandRed).clip(CircleShape))
                     Spacer(modifier = Modifier.width(4.dp))
-                    Text("Trip Critical (8.8)", fontSize = 8.sp, color = Color.Black)
+                    Text("Critikal (> 7.0)", fontSize = 8.sp, color = Color.Black)
                 }
             }
             1 -> {
-                Text("Garis: Suhu Bearing (Oranye/Tebal)", fontSize = 8.sp, color = Color.DarkGray)
+                Text("Garis: Suhu Bearing 1 & 2 (Oranye/Tebal)", fontSize = 8.sp, color = Color.DarkGray)
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Box(modifier = Modifier.size(8.dp).background(BrandYellow).clip(CircleShape))
                     Spacer(modifier = Modifier.width(4.dp))
-                    Text("Warning (65°C)", fontSize = 8.sp, color = Color.Black)
+                    Text("Warning (70°C)", fontSize = 8.sp, color = Color.Black)
                     Spacer(modifier = Modifier.width(8.dp))
                     Box(modifier = Modifier.size(8.dp).background(BrandRed).clip(CircleShape))
                     Spacer(modifier = Modifier.width(4.dp))
-                    Text("Trip Critical (75°C)", fontSize = 8.sp, color = Color.Black)
+                    Text("Critical (> 80°C)", fontSize = 8.sp, color = Color.Black)
                 }
             }
             else -> {
@@ -2020,7 +2089,7 @@ fun EnlargedChartModalDialog(
                                 shape = RoundedCornerShape(8.dp)
                             ) {
                                 Column(modifier = Modifier.padding(8.dp)) {
-                                    Text("Axial 1 (DE)", fontSize = 9.5.sp, fontWeight = FontWeight.Bold, color = BrandGreen)
+                                    Text("Axial 1", fontSize = 9.5.sp, fontWeight = FontWeight.Bold, color = Color(0xFF00C853))
                                     Text("Max: ${String.format(Locale.US, "%.1f", maxDe)} mm/s", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = SlateGrey)
                                     Text("Rata: ${String.format(Locale.US, "%.1f", avgDe)} mm/s", fontSize = 10.sp, color = Color.DarkGray)
                                 }
@@ -2031,7 +2100,7 @@ fun EnlargedChartModalDialog(
                                 shape = RoundedCornerShape(8.dp)
                             ) {
                                 Column(modifier = Modifier.padding(8.dp)) {
-                                    Text("Axial 2 (NDE)", fontSize = 9.5.sp, fontWeight = FontWeight.Bold, color = SlateGrey)
+                                    Text("Axial 2", fontSize = 9.5.sp, fontWeight = FontWeight.Bold, color = SlateGrey)
                                     Text("Max: ${String.format(Locale.US, "%.1f", maxNde)} mm/s", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = SlateGrey)
                                     Text("Rata: ${String.format(Locale.US, "%.1f", avgNde)} mm/s", fontSize = 10.sp, color = Color.DarkGray)
                                 }
@@ -2043,8 +2112,8 @@ fun EnlargedChartModalDialog(
                             ) {
                                 Column(modifier = Modifier.padding(8.dp)) {
                                     Text("Status Vibrasi", fontSize = 9.5.sp, fontWeight = FontWeight.Bold, color = if (hasCriticalValue) BrandRed else BrandGreen)
-                                    Text(if (hasCriticalValue) "KRITIKAL" else if (maxDe >= selectedUnit.warningVib) "WARNING" else "NORMAL", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = if (hasCriticalValue) BrandRed else if (maxDe >= selectedUnit.warningVib) BrandOrange else BrandGreen)
-                                    Text("Trip: ${selectedUnit.criticalVib} mm/s", fontSize = 9.5.sp, color = Color.DarkGray)
+                                    Text(if (hasCriticalValue) "CRITIKAL" else if (maxDe >= selectedUnit.warningVib) "WARNING" else "NORMAL", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = if (hasCriticalValue) BrandRed else if (maxDe >= selectedUnit.warningVib) BrandOrange else BrandGreen)
+                                    Text("Critikal: > ${selectedUnit.criticalVib} mm/s", fontSize = 9.5.sp, color = Color.DarkGray)
                                 }
                             }
                         }
@@ -2728,30 +2797,41 @@ fun DashboardScreen(
                                 }
 
                                 val hasValues = if (timeRangeSelection == 0) isMeasuredToday else if (timeRangeSelection == 3) (selectedUnitSummary.alarmStatus != "UNMEASURED") else (reportValues.dev != null && (reportValues.dev ?: 0f) > 0f)
-                                val isAbnormal = hasValues && (
-                                    (reportValues.dev ?: 0f) > 4.0f ||
-                                    (reportValues.nde ?: 0f) > 4.0f ||
-                                    (reportValues.motorVib ?: 0f) > 4.0f ||
-                                    (reportValues.gearboxVib ?: 0f) > 4.0f ||
+                                val isCritical = hasValues && (
+                                    (reportValues.dev ?: 0f) > 7.0f ||
+                                    (reportValues.nde ?: 0f) > 7.0f ||
+                                    (reportValues.motorVib ?: 0f) > 7.0f ||
+                                    (reportValues.gearboxVib ?: 0f) > 7.0f ||
                                     (reportValues.bearingTemp ?: 0f) > 80.0f ||
+                                    (reportValues.bearingTemp2 ?: 0f) > 80.0f ||
                                     (reportValues.motorTemp ?: 0f) > 80.0f
+                                )
+                                val isWarning = hasValues && !isCritical && (
+                                    (reportValues.dev ?: 0f) > 4.5f ||
+                                    (reportValues.nde ?: 0f) > 4.5f ||
+                                    (reportValues.motorVib ?: 0f) > 4.5f ||
+                                    (reportValues.gearboxVib ?: 0f) > 4.5f ||
+                                    (reportValues.bearingTemp ?: 0f) > 70.0f ||
+                                    (reportValues.bearingTemp2 ?: 0f) > 70.0f ||
+                                    (reportValues.motorTemp ?: 0f) > 70.0f
                                 )
 
                                 Box(
                                     modifier = Modifier
                                         .background(
                                             if (!hasValues) Color(0xFFF1F5F9)
-                                            else if (isAbnormal) Color(0xFFFFCDD2)
+                                            else if (isCritical) Color(0xFFFFCDD2)
+                                            else if (isWarning) Color(0xFFFFF9C4)
                                             else Color(0xFFC8E6C9),
                                             RoundedCornerShape(8.dp)
                                         )
                                         .padding(horizontal = 8.dp, vertical = 4.dp)
                                 ) {
                                     Text(
-                                        text = if (!hasValues) "BELUM DIUKUR" else if (isAbnormal) "PERLU ATENSI" else "NORMAL",
+                                        text = if (!hasValues) "BELUM DIUKUR" else if (isCritical) "CRITIKAL" else if (isWarning) "WARNING" else "NORMAL",
                                         fontSize = 10.sp,
                                         fontWeight = FontWeight.Bold,
-                                        color = if (!hasValues) Color.Gray else if (isAbnormal) Color(0xFFB71C1C) else Color(0xFF1B5E20)
+                                        color = if (!hasValues) Color.Gray else if (isCritical) Color(0xFFB71C1C) else if (isWarning) Color(0xFF78350F) else Color(0xFF1B5E20)
                                     )
                                 }
                             }
@@ -2769,10 +2849,10 @@ fun DashboardScreen(
                             )
                             Spacer(modifier = Modifier.height(6.dp))
 
-                            ReportRowItem("1", "Axial 1", reportValues.dev, "mm/s", 4.0f, infoText = "Titik ukur pada Bearing dekat dengan pulley")
-                            ReportRowItem("2", "Axial 2", reportValues.nde, "mm/s", 4.0f, infoText = "Titik ukur pada Bearing dekat dengan gland packing")
-                            ReportRowItem("3", "Horizontal", reportValues.motorVib, "mm/s", 4.0f, infoText = "Titik ukur pada Body mesin sejajar dengan titik Axial 1")
-                            ReportRowItem("4", "Vertikal", reportValues.gearboxVib, "mm/s", 4.0f, infoText = "Titik ukur pada body mesin bagian atas tegak lurus dari titik Axial")
+                            ReportRowItem("1", "Axial 1", reportValues.dev, "mm/s", 7.0f, warningThreshold = 4.5f, infoText = "Titik ukur pada Bearing dekat dengan pulley")
+                            ReportRowItem("2", "Axial 2", reportValues.nde, "mm/s", 7.0f, warningThreshold = 4.5f, infoText = "Titik ukur pada Bearing dekat dengan gland packing")
+                            ReportRowItem("3", "Horizontal", reportValues.motorVib, "mm/s", 7.0f, warningThreshold = 4.5f, infoText = "Titik ukur pada Body mesin sejajar dengan titik Axial 1")
+                            ReportRowItem("4", "Vertikal", reportValues.gearboxVib, "mm/s", 7.0f, warningThreshold = 4.5f, infoText = "Titik ukur pada body mesin bagian atas tegak lurus dari titik Axial")
 
                             Spacer(modifier = Modifier.height(10.dp))
                             Divider(color = Color(0xFFF1F5F9), thickness = 1.dp)
@@ -2787,14 +2867,15 @@ fun DashboardScreen(
                             )
                             Spacer(modifier = Modifier.height(6.dp))
 
-                            ReportRowItem("1", "Suhu Bearing", reportValues.bearingTemp, "oC", 80.0f, isDegree = true)
-                            ReportRowItem("2", "Suhu Motor", reportValues.motorTemp, "oC", 80.0f, isDegree = true)
+                            ReportRowItem("1", "Suhu Bearing 1", reportValues.bearingTemp, "oC", 80.0f, isDegree = true, warningThreshold = 70.0f, infoText = "Titik ukur Suhu bearing dekat dengan Pulley")
+                            ReportRowItem("2", "Suhu Bearing 2", reportValues.bearingTemp2 ?: reportValues.bearingTemp, "oC", 80.0f, isDegree = true, warningThreshold = 70.0f, infoText = "Titik ukur Suhu bearing dekat dengan Gland Packing")
+                            ReportRowItem("3", "Suhu Motor", reportValues.motorTemp, "oC", 80.0f, isDegree = true, warningThreshold = 70.0f)
 
                             Spacer(modifier = Modifier.height(10.dp))
                             Divider(color = Color(0xFFF1F5F9), thickness = 1.dp)
                             Spacer(modifier = Modifier.height(10.dp))
 
-                            // Parameter Observasi Fisik & Pelumasan (Greasing, Suara, Kebocoran)
+                            // Parameter Observasi Fisik & Pelumasan (Greasing, Suara)
                             Text(
                                 text = if (timeRangeSelection == 0) "Hasil Observasi Fisik & Pelumasan:" else "Rata-Rata Observasi Fisik & Pelumasan:",
                                 fontSize = 12.sp,
@@ -2815,12 +2896,6 @@ fun DashboardScreen(
                                 valueText = reportValues.soundRatioText,
                                 isGood = if (reportValues.soundState != null) reportValues.soundState == "Normal" else null
                             )
-                            ReportStatusRowItem(
-                                number = "3",
-                                label = "Kebocoran",
-                                valueText = reportValues.leakageRatioText,
-                                isGood = if (reportValues.hasLeakage != null) !reportValues.hasLeakage!! else null
-                            )
 
                             // Harian notes or empty warning
                             if (timeRangeSelection == 0) {
@@ -2834,9 +2909,9 @@ fun DashboardScreen(
                                         Column(modifier = Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                                             Text(
                                                 text = if (selectedUnitSummary.todayLogCount > 1) {
-                                                    "4. Catatan hasil observasi (Rata-rata ${selectedUnitSummary.todayLogCount}x pengukuran) :"
+                                                    "3. Catatan hasil observasi (Rata-rata ${selectedUnitSummary.todayLogCount}x pengukuran) :"
                                                 } else {
-                                                    "4. Catatan hasil observasi :"
+                                                    "3. Catatan hasil observasi :"
                                                 },
                                                 fontSize = 11.sp,
                                                 fontWeight = FontWeight.SemiBold,
@@ -3460,7 +3535,7 @@ fun DashboardScreen(
                                     
                                     Spacer(modifier = Modifier.height(2.dp))
                                     Text(
-                                        text = "Suhu: Bearing ${log.bearingTemp}°C • Motor ${log.motorTemp}°C",
+                                        text = "Suhu: Bearing 1 ${log.bearingTemp}°C • Bearing 2 ${log.effectiveBearingTemp2}°C • Motor ${log.motorTemp}°C",
                                         fontSize = 11.sp,
                                         color = Color.Black,
                                         fontWeight = FontWeight.Bold
@@ -3557,10 +3632,10 @@ fun DashboardScreen(
             var motorVib by remember { mutableStateOf("") }
             var gearboxVib by remember { mutableStateOf("") }
             var bTemp by remember { mutableStateOf("") }
+            var bTemp2 by remember { mutableStateOf("") }
             var mTemp by remember { mutableStateOf("") }
             var greasingSelection by remember { mutableStateOf("Belum Masuk Jadwal") }
             var soundSelection by remember { mutableStateOf("Normal") }
-            var hasLeakageSelection by remember { mutableStateOf(false) }
             var comments by remember { mutableStateOf("") }
 
             var activeVibInfoTitle by remember { mutableStateOf<String?>(null) }
@@ -3790,7 +3865,7 @@ fun DashboardScreen(
                         }
                     }
 
-                    // Greasing, Suara, Kebocoran status toggles
+                    // Greasing & Suara status toggles
                     Column(
                         modifier = Modifier.fillMaxWidth(),
                         verticalArrangement = Arrangement.spacedBy(10.dp)
@@ -3994,87 +4069,6 @@ fun DashboardScreen(
                                 }
                             }
                         }
-
-                        // Kebocoran : |Ya| |Tidak|
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Text(
-                                text = "Kebocoran :",
-                                fontSize = 12.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = SlateGrey,
-                                modifier = Modifier.width(95.dp)
-                            )
-                            Row(
-                                modifier = Modifier.weight(1f),
-                                horizontalArrangement = Arrangement.spacedBy(8.dp)
-                            ) {
-                                // Ya (Warna Merah)
-                                val yaLeakSelected = hasLeakageSelection
-                                Card(
-                                    modifier = Modifier
-                                        .weight(1f)
-                                        .clickable { hasLeakageSelection = true }
-                                        .testTag("kebocoran_ya_button"),
-                                    colors = CardDefaults.cardColors(
-                                        containerColor = if (yaLeakSelected) Color(0xFFD32F2F) else Color(0xFFFFEBEE)
-                                    ),
-                                    shape = RoundedCornerShape(8.dp),
-                                    border = BorderStroke(
-                                        if (yaLeakSelected) 2.dp else 1.dp,
-                                        if (yaLeakSelected) Color(0xFFB71C1C) else Color(0xFFFFCDD2)
-                                    )
-                                ) {
-                                    Box(
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .padding(vertical = 8.dp),
-                                        contentAlignment = Alignment.Center
-                                    ) {
-                                        Text(
-                                            text = "Ya",
-                                            fontSize = 12.sp,
-                                            fontWeight = if (yaLeakSelected) FontWeight.ExtraBold else FontWeight.Bold,
-                                            color = if (yaLeakSelected) Color.White else Color(0xFFB71C1C)
-                                        )
-                                    }
-                                }
-
-                                // Tidak (Warna Hijau)
-                                val tidakLeakSelected = !hasLeakageSelection
-                                Card(
-                                    modifier = Modifier
-                                        .weight(1f)
-                                        .clickable { hasLeakageSelection = false }
-                                        .testTag("kebocoran_tidak_button"),
-                                    colors = CardDefaults.cardColors(
-                                        containerColor = if (tidakLeakSelected) Color(0xFF2E7D32) else Color(0xFFE8F5E9)
-                                    ),
-                                    shape = RoundedCornerShape(8.dp),
-                                    border = BorderStroke(
-                                        if (tidakLeakSelected) 2.dp else 1.dp,
-                                        if (tidakLeakSelected) Color(0xFF1B5E20) else Color(0xFFA5D6A7)
-                                    )
-                                ) {
-                                    Box(
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .padding(vertical = 8.dp),
-                                        contentAlignment = Alignment.Center
-                                    ) {
-                                        Text(
-                                            text = "Tidak",
-                                            fontSize = 12.sp,
-                                            fontWeight = if (tidakLeakSelected) FontWeight.ExtraBold else FontWeight.Bold,
-                                            color = if (tidakLeakSelected) Color.White else Color(0xFF1B5E20)
-                                        )
-                                    }
-                                }
-                            }
-                        }
                     }
 
                     Text("Parameter Vibrasi (mm/s):", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = SlateGrey)
@@ -4129,21 +4123,25 @@ fun DashboardScreen(
 
                         vibrationFields.forEach { field ->
                             val fVal = field.value.toFloatOrNull()
-                            val isRed = fVal != null && fVal > 4.0f
-                            val isGreen = fVal != null && fVal <= 4.0f
+                            val isRed = fVal != null && fVal > 7.0f
+                            val isYellow = fVal != null && fVal > 4.5f && fVal <= 7.0f
+                            val isGreen = fVal != null && fVal <= 4.5f
 
                             val bgColor = when {
                                 isRed -> Color(0xFFFFCDD2)
+                                isYellow -> Color(0xFFFFF9C4)
                                 isGreen -> Color(0xFFC8E6C9)
                                 else -> Color(0xFFF8FAFC)
                             }
                             val borderColor = when {
                                 isRed -> Color(0xFFD32F2F)
+                                isYellow -> Color(0xFFFBC02D)
                                 isGreen -> Color(0xFF2E7D32)
                                 else -> Color(0xFFCBD5E1)
                             }
                             val textColor = when {
                                 isRed -> Color(0xFFB71C1C)
+                                isYellow -> Color(0xFF78350F)
                                 isGreen -> Color(0xFF1B5E20)
                                 else -> Color(0xFF1E293B)
                             }
@@ -4209,7 +4207,7 @@ fun DashboardScreen(
                                     text = "mm/s",
                                     fontSize = 11.sp,
                                     fontWeight = FontWeight.Bold,
-                                    color = if (isRed) Color(0xFFB71C1C) else if (isGreen) Color(0xFF1B5E20) else Color(0xFF64748B),
+                                    color = if (isRed) Color(0xFFB71C1C) else if (isYellow) Color(0xFF78350F) else if (isGreen) Color(0xFF1B5E20) else Color(0xFF64748B),
                                     modifier = Modifier.width(42.dp)
                                 )
                             }
@@ -4222,29 +4220,63 @@ fun DashboardScreen(
                         modifier = Modifier.fillMaxWidth(),
                         verticalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        val tempFields = listOf(
-                            Triple("1. Suhu Bearing :", bTemp, "bearing_temp_input") to { v: String -> bTemp = v },
-                            Triple("2. Suhu Motor :", mTemp, "motor_temp_input") to { v: String -> mTemp = v }
+                        data class TempInputField(
+                            val number: String,
+                            val name: String,
+                            val value: String,
+                            val testTagStr: String,
+                            val info: String?,
+                            val onValueChange: (String) -> Unit
                         )
 
-                        tempFields.forEach { (fieldInfo, onValueChange) ->
-                            val (labelText, currentVal, testTagStr) = fieldInfo
-                            val fVal = currentVal.toFloatOrNull()
+                        val tempFields = listOf(
+                            TempInputField(
+                                number = "1",
+                                name = "Suhu Bearing 1",
+                                value = bTemp,
+                                testTagStr = "bearing_temp_input",
+                                info = "Titik ukur Suhu bearing dekat dengan Pulley",
+                                onValueChange = { bTemp = it }
+                            ),
+                            TempInputField(
+                                number = "2",
+                                name = "Suhu Bearing 2",
+                                value = bTemp2,
+                                testTagStr = "bearing_temp_2_input",
+                                info = "Titik ukur Suhu bearing dekat dengan Gland Packing",
+                                onValueChange = { bTemp2 = it }
+                            ),
+                            TempInputField(
+                                number = "3",
+                                name = "Suhu Motor",
+                                value = mTemp,
+                                testTagStr = "motor_temp_input",
+                                info = null,
+                                onValueChange = { mTemp = it }
+                            )
+                        )
+
+                        tempFields.forEach { field ->
+                            val fVal = field.value.toFloatOrNull()
                             val isRed = fVal != null && fVal > 80.0f
-                            val isGreen = fVal != null && fVal <= 80.0f
+                            val isYellow = fVal != null && fVal > 70.0f && fVal <= 80.0f
+                            val isGreen = fVal != null && fVal <= 70.0f
 
                             val bgColor = when {
                                 isRed -> Color(0xFFFFCDD2)
+                                isYellow -> Color(0xFFFFF9C4) // Background kuning
                                 isGreen -> Color(0xFFC8E6C9)
                                 else -> Color(0xFFF8FAFC)
                             }
                             val borderColor = when {
                                 isRed -> Color(0xFFD32F2F)
+                                isYellow -> Color(0xFFFBC02D)
                                 isGreen -> Color(0xFF2E7D32)
                                 else -> Color(0xFFCBD5E1)
                             }
                             val textColor = when {
                                 isRed -> Color(0xFFB71C1C)
+                                isYellow -> Color(0xFF78350F)
                                 isGreen -> Color(0xFF1B5E20)
                                 else -> Color(0xFF1E293B)
                             }
@@ -4253,16 +4285,40 @@ fun DashboardScreen(
                                 modifier = Modifier.fillMaxWidth(),
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
-                                Text(
-                                    text = labelText,
-                                    fontSize = 12.sp,
-                                    fontWeight = FontWeight.SemiBold,
-                                    color = SlateGrey,
-                                    modifier = Modifier.width(132.dp)
-                                )
+                                Row(
+                                    modifier = Modifier.width(132.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text(
+                                        text = "${field.number}. ${field.name} :",
+                                        fontSize = 12.sp,
+                                        fontWeight = FontWeight.SemiBold,
+                                        color = SlateGrey,
+                                        modifier = Modifier.weight(1f, fill = false),
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                    if (field.info != null) {
+                                        Spacer(modifier = Modifier.width(2.dp))
+                                        IconButton(
+                                            onClick = {
+                                                activeVibInfoTitle = "${field.number}. ${field.name}"
+                                                activeVibInfoText = field.info
+                                            },
+                                            modifier = Modifier.size(24.dp)
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Default.Info,
+                                                contentDescription = "Info ${field.name}",
+                                                tint = BrandGreen,
+                                                modifier = Modifier.size(16.dp)
+                                            )
+                                        }
+                                    }
+                                }
                                 OutlinedTextField(
-                                    value = currentVal,
-                                    onValueChange = onValueChange,
+                                    value = field.value,
+                                    onValueChange = field.onValueChange,
                                     placeholder = { Text("0.0", fontSize = 12.sp, color = Color.Gray) },
                                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                                     singleLine = true,
@@ -4281,7 +4337,7 @@ fun DashboardScreen(
                                     ),
                                     modifier = Modifier
                                         .weight(1f)
-                                        .testTag(testTagStr)
+                                        .testTag(field.testTagStr)
                                 )
                                 Spacer(modifier = Modifier.width(8.dp))
                                 Text(
@@ -4293,19 +4349,19 @@ fun DashboardScreen(
                                     },
                                     fontSize = 12.sp,
                                     fontWeight = FontWeight.Bold,
-                                    color = if (isRed) Color(0xFFB71C1C) else if (isGreen) Color(0xFF1B5E20) else Color(0xFF64748B),
+                                    color = if (isRed) Color(0xFFB71C1C) else if (isYellow) Color(0xFF78350F) else if (isGreen) Color(0xFF1B5E20) else Color(0xFF64748B),
                                     modifier = Modifier.width(42.dp)
                                 )
                             }
                         }
 
-                        // 3. Catatan hasil observasi
+                        // 4. Catatan hasil observasi
                         Column(
                             modifier = Modifier.fillMaxWidth(),
                             verticalArrangement = Arrangement.spacedBy(4.dp)
                         ) {
                             Text(
-                                text = "3. Catatan hasil observasi :",
+                                text = "4. Catatan hasil observasi :",
                                 fontSize = 12.sp,
                                 fontWeight = FontWeight.SemiBold,
                                 color = Color.Black
@@ -4347,9 +4403,11 @@ fun DashboardScreen(
                                 val motorVibValue = motorVib.toFloatOrNull() ?: 1.8f
                                 val gearboxVibValue = gearboxVib.toFloatOrNull() ?: 2.0f
                                 val bTempValue = bTemp.toFloatOrNull() ?: 55f
+                                val bTemp2Value = bTemp2.toFloatOrNull() ?: bTempValue
                                 val mTempValue = mTemp.toFloatOrNull() ?: 48f
                                 val maxVibVal = maxOf(deValue, ndeValue, motorVibValue, gearboxVibValue)
-                                val alarm = if (maxVibVal >= 8.8f || bTempValue >= 70f) "Critical" else if (maxVibVal >= 4.5f) "Warning" else "Normal"
+                                val maxTempVal = maxOf(bTempValue, bTemp2Value, mTempValue)
+                                val alarm = if (maxVibVal > 7.0f || maxTempVal > 80.0f) "Critical" else if (maxVibVal > 4.5f || maxTempVal > 70.0f) "Warning" else "Normal"
 
                                 val finalComments = if (comments.trim().isEmpty()) {
                                     "Log manual [$selectedUnitForLog]"
@@ -4367,11 +4425,12 @@ fun DashboardScreen(
                                         gearboxBearingVibration = gearboxVibValue,
                                         bowlVibration = 0f,
                                         bearingTemp = bTempValue,
+                                        bearingTemp2 = bTemp2Value,
                                         motorTemp = mTempValue,
                                         isGreased = (greasingSelection == "Ya"),
                                         greasingStatus = greasingSelection,
                                         soundState = soundSelection,
-                                        hasLeakage = hasLeakageSelection,
+                                        hasLeakage = false,
                                         alarmState = alarm,
                                         machineStatus = selectedMachineStatus,
                                         comments = finalComments
@@ -4527,10 +4586,18 @@ fun ReportCiltView(ciltHistory: List<CiltCheck>) {
     var selectedPeriod by remember { mutableStateOf("Hari Ini") } // "Hari Ini", "Seminggu", "Sebulan", "Tanggal"
     var selectedOperatorFilter by remember { mutableStateOf("Semua") } // "Semua", "Wahyu", "Abdul Aziz"
     var expandedLogId by remember { mutableStateOf<Long?>(null) }
+    var currentTimeMillis by remember { mutableStateOf(System.currentTimeMillis()) }
 
-    val now = System.currentTimeMillis()
-    val startOfToday = remember(now) {
-        WibDateUtils.getStartOfDay(now)
+    LaunchedEffect(Unit) {
+        while (true) {
+            kotlinx.coroutines.delay(10_000L) // Refresh tiap 10 detik agar data real-time akurat
+            currentTimeMillis = System.currentTimeMillis()
+        }
+    }
+
+    val now = currentTimeMillis
+    val startOfToday = remember(currentTimeMillis / (24 * 3600 * 1000L)) {
+        WibDateUtils.getStartOfDay(currentTimeMillis)
     }
     val todayEnd = remember(startOfToday) {
         startOfToday + 24 * 3600 * 1000L - 1L
@@ -4596,21 +4663,21 @@ fun ReportCiltView(ciltHistory: List<CiltCheck>) {
     }
 
     // Filter berdasarkan Periode (Hari Ini, Seminggu, Sebulan, Tanggal)
-    val periodFilteredChecks = remember(ciltHistory, selectedPeriod, now, startOfToday, customStartDate, customEndDate) {
+    val periodFilteredChecks = remember(ciltHistory, selectedPeriod, customStartDate, customEndDate, currentTimeMillis) {
+        val todayStart = WibDateUtils.getStartOfDay(currentTimeMillis)
+        val endOfToday = todayStart + 24 * 3600 * 1000L - 1L
         when (selectedPeriod) {
-            "Hari Ini" -> {
-                val daily = ciltHistory.filter { it.timestamp >= startOfToday || it.timestamp >= (now - 24 * 3600 * 1000L) }
-                if (daily.isNotEmpty()) daily else ciltHistory.take(2)
+            "Hari Ini", "Hari ini" -> {
+                // Hanya data realisasi hari ini (00:00 - 23:59 WIB) secara real time, bukan data hari sebelumnya
+                ciltHistory.filter { it.timestamp in todayStart..endOfToday }
             }
             "Seminggu" -> {
-                val weekThreshold = now - 7L * 24 * 3600 * 1000L
-                val weekly = ciltHistory.filter { it.timestamp >= weekThreshold }
-                if (weekly.isNotEmpty()) weekly else ciltHistory.take(6)
+                val weekStart = todayStart - 6L * 24 * 3600 * 1000L
+                ciltHistory.filter { it.timestamp in weekStart..endOfToday }
             }
             "Sebulan" -> {
-                val monthThreshold = now - 30L * 24 * 3600 * 1000L
-                val monthly = ciltHistory.filter { it.timestamp >= monthThreshold }
-                if (monthly.isNotEmpty()) monthly else ciltHistory
+                val monthStart = todayStart - 29L * 24 * 3600 * 1000L
+                ciltHistory.filter { it.timestamp in monthStart..endOfToday }
             }
             else -> { // "Tanggal"
                 ciltHistory.filter { it.timestamp in customStartDate..customEndDate }
@@ -4628,16 +4695,16 @@ fun ReportCiltView(ciltHistory: List<CiltCheck>) {
     }
 
     // Label range tanggal periode WIB
-    val periodDateRangeText = remember(selectedPeriod, now, customStartDate, customEndDate) {
+    val periodDateRangeText = remember(selectedPeriod, currentTimeMillis, customStartDate, customEndDate) {
         when (selectedPeriod) {
-            "Hari Ini" -> "Hari Ini • ${WibDateUtils.format("dd MMM yyyy", now)}"
+            "Hari Ini", "Hari ini" -> "Hari Ini • ${WibDateUtils.format("dd MMM yyyy", currentTimeMillis)}"
             "Seminggu" -> {
-                val weekStart = WibDateUtils.format("dd MMM", now - 7L * 24 * 3600 * 1000L)
-                "7 Hari Terakhir • $weekStart - ${WibDateUtils.format("dd MMM yyyy", now)}"
+                val weekStart = WibDateUtils.format("dd MMM", currentTimeMillis - 6L * 24 * 3600 * 1000L)
+                "7 Hari Terakhir • $weekStart - ${WibDateUtils.format("dd MMM yyyy", currentTimeMillis)}"
             }
             "Sebulan" -> {
-                val monthStart = WibDateUtils.format("dd MMM", now - 30L * 24 * 3600 * 1000L)
-                "30 Hari Terakhir • $monthStart - ${WibDateUtils.format("dd MMM yyyy", now)}"
+                val monthStart = WibDateUtils.format("dd MMM", currentTimeMillis - 29L * 24 * 3600 * 1000L)
+                "30 Hari Terakhir • $monthStart - ${WibDateUtils.format("dd MMM yyyy", currentTimeMillis)}"
             }
             else -> {
                 "${WibDateUtils.format("dd MMM yyyy", customStartDate)} - ${WibDateUtils.format("dd MMM yyyy", customEndDate)}"
@@ -6561,14 +6628,100 @@ class FailureModeRowItem(
     initialSeverity: Int = 0,
     initialOccurrence: Int = 0,
     initialDetection: Int = 0,
-    val isCustomInput: Boolean = false
+    val isCustomInput: Boolean = false,
+    initialMachine: String = "SC-01",
+    val isManualFailureMode: Boolean = false
 ) {
     var component by mutableStateOf(initialComponent)
+    var selectedMachine by mutableStateOf(initialMachine)
     var selectedFailureMode by mutableStateOf(initialFailureMode)
     var severity by mutableStateOf(initialSeverity)
     var occurrence by mutableStateOf(initialOccurrence)
     var detection by mutableStateOf(initialDetection)
-    var isCustomMode by mutableStateOf(isCustomInput)
+    var isCustomMode by mutableStateOf(isCustomInput || isManualFailureMode)
+}
+
+@Composable
+fun MachineOptionDropdown(
+    selected: String,
+    options: List<String>,
+    onSelect: (String) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    var expanded by remember { mutableStateOf(false) }
+
+    Box(modifier = modifier) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(36.dp)
+                .clip(RoundedCornerShape(6.dp))
+                .background(Color.White)
+                .border(1.dp, Color(0xFFCBD5E1), RoundedCornerShape(6.dp))
+                .clickable { expanded = !expanded }
+                .padding(horizontal = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            Text(
+                text = if (selected.isNotBlank()) selected else "Pilih Mesin...",
+                fontSize = 11.sp,
+                fontWeight = FontWeight.SemiBold,
+                color = Color.Black,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f, fill = false)
+            )
+            Icon(
+                imageVector = Icons.Default.ArrowDropDown,
+                contentDescription = "Pilih Mesin",
+                tint = Color.Black,
+                modifier = Modifier.size(16.dp)
+            )
+        }
+
+        DropdownMenu(
+            expanded = expanded,
+            onDismissRequest = { expanded = false },
+            properties = PopupProperties(focusable = true),
+            modifier = Modifier
+                .width(220.dp)
+                .background(Color.White)
+        ) {
+            options.forEach { m ->
+                val isSelected = selected == m
+                DropdownMenuItem(
+                    text = {
+                        Text(
+                            text = m,
+                            fontSize = 12.sp,
+                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                            color = Color.Black
+                        )
+                    },
+                    onClick = {
+                        onSelect(m)
+                        expanded = false
+                    },
+                    leadingIcon = if (isSelected) {
+                        {
+                            Box(
+                                modifier = Modifier
+                                    .size(16.dp)
+                                    .background(Color(0xFF16A34A), CircleShape),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(Icons.Default.Check, contentDescription = null, tint = Color.White, modifier = Modifier.size(11.dp))
+                            }
+                        }
+                    } else null,
+                    modifier = Modifier.background(
+                        if (isSelected) Color(0xFFDCFCE7) else Color.White
+                    )
+                )
+            }
+        }
+    }
 }
 
 @Composable
@@ -6957,6 +7110,7 @@ data class ReportRowAccumulation(
     val maxDoneLeadDays: Long? = null
 )
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun AbnormalityScreen(
     reports: List<AbnormalityReport>,
@@ -6966,6 +7120,8 @@ fun AbnormalityScreen(
 ) {
     // 2 Sub-menu di dalam Reliability PM: "Input Abnormality" & "Report"
     var currentSubMenu by remember { mutableStateOf("Input Abnormality") }
+    val inputTableScrollState = rememberScrollState()
+    val reportTableScrollState = rememberScrollState()
 
     val operatorList = listOf("Wahyu", "Abdul Aziz")
     var selectedOperator by remember { mutableStateOf("Wahyu") }
@@ -6974,9 +7130,22 @@ fun AbnormalityScreen(
     val shiftList = listOf("Pagi", "Malam")
     var selectedShift by remember { mutableStateOf("Pagi") }
 
-    var selectedMachine by remember { mutableStateOf("SC-01") }
-    var machineDropdownExpanded by remember { mutableStateOf(false) }
-    val machineList = listOf("SC-01", "SC-02", "SC-03", "SC-04", "SC-05", "SC-06", "SC-07", "SC-08")
+    val machineList = listOf(
+        "SC-01",
+        "SC-02",
+        "SC-03",
+        "SC-04",
+        "SC-05",
+        "SC-06",
+        "Sandcyclone-01",
+        "Sandcyclone-02",
+        "Pompa Sandcyclone-01",
+        "Pompa Sandcyclone-02",
+        "Vibrating-01",
+        "Vibrating-02",
+        "Sludge Pump01",
+        "Sludge Pump02"
+    )
 
     val failureModeItems = remember {
         listOf(
@@ -6987,7 +7156,12 @@ fun AbnormalityScreen(
             FailureModeRowItem(5, "Shaft", listOf("Misalignment", "Aus", "Patah"), "Misalignment", 0, 0, 0),
             FailureModeRowItem(6, "Belt", listOf("Kendur", "Aus", "Putus"), "Kendur", 0, 0, 0),
             FailureModeRowItem(7, "Motor", listOf("Overheat", "Electrical failure"), "Overheat", 0, 0, 0),
-            FailureModeRowItem(8, "", emptyList(), "", 0, 0, 0, isCustomInput = true)
+            FailureModeRowItem(8, "Gland Packing", emptyList(), "", 0, 0, 0, isManualFailureMode = true),
+            FailureModeRowItem(9, "Selenoid Valve", emptyList(), "", 0, 0, 0, isManualFailureMode = true),
+            FailureModeRowItem(10, "Timer", emptyList(), "", 0, 0, 0, isManualFailureMode = true),
+            FailureModeRowItem(11, "Mechanical Seal", emptyList(), "", 0, 0, 0, isManualFailureMode = true),
+            FailureModeRowItem(12, "Mesh", emptyList(), "", 0, 0, 0, isManualFailureMode = true),
+            FailureModeRowItem(13, "", emptyList(), "", 0, 0, 0, isCustomInput = true)
         )
     }
 
@@ -7173,8 +7347,8 @@ fun AbnormalityScreen(
     var reportMachineDropdownExpanded by remember { mutableStateOf(false) }
 
     val context = LocalContext.current
-    val now = System.currentTimeMillis()
-    val startOfToday = remember(now) { WibDateUtils.getStartOfDay(now) }
+    val now = currentTimeMillis
+    val startOfToday = remember(currentTimeMillis / (24 * 3600 * 1000L)) { WibDateUtils.getStartOfDay(currentTimeMillis) }
     val endOfToday = remember(startOfToday) { startOfToday + 24 * 3600 * 1000L - 1L }
     var customStartDate by remember { mutableStateOf(startOfToday) }
     var customEndDate by remember { mutableStateOf(endOfToday) }
@@ -7236,22 +7410,22 @@ fun AbnormalityScreen(
         ).show()
     }
 
-    val filteredReports = remember(reports, selectedPeriod, selectedReportMachine, customStartDate, customEndDate) {
+    val filteredReports = remember(reports, selectedPeriod, selectedReportMachine, customStartDate, customEndDate, currentTimeMillis) {
+        val todayStart = WibDateUtils.getStartOfDay(currentTimeMillis)
+        val todayEnd = todayStart + 24 * 3600 * 1000L - 1L
         reports.filter { r ->
             val inPeriod = when (selectedPeriod) {
-                "Hari Ini" -> {
-                    val cal = WibDateUtils.getCalendar()
-                    cal.set(Calendar.HOUR_OF_DAY, 0)
-                    cal.set(Calendar.MINUTE, 0)
-                    cal.set(Calendar.SECOND, 0)
-                    cal.set(Calendar.MILLISECOND, 0)
-                    r.timestamp >= cal.timeInMillis || (now - r.timestamp) <= 24L * 3600 * 1000
+                "Hari Ini", "Hari ini" -> {
+                    // Hanya data realisasi hari ini (00:00 - 23:59 WIB) secara real time, bukan 24 jam terakhir / hari sebelumnya
+                    r.timestamp in todayStart..todayEnd
                 }
                 "Seminggu" -> {
-                    r.timestamp >= (now - 7L * 24 * 3600 * 1000)
+                    val weekStart = todayStart - 6L * 24 * 3600 * 1000L
+                    r.timestamp in weekStart..todayEnd
                 }
                 "Sebulan" -> {
-                    r.timestamp >= (now - 30L * 24 * 3600 * 1000)
+                    val monthStart = todayStart - 29L * 24 * 3600 * 1000L
+                    r.timestamp in monthStart..todayEnd
                 }
                 else -> { // "Tanggal"
                     r.timestamp in customStartDate..customEndDate
@@ -7270,10 +7444,157 @@ fun AbnormalityScreen(
         )
     }
 
-    val periodDisplayLabel = remember(selectedPeriod, customStartDate, customEndDate) {
+    val periodDisplayLabel = remember(selectedPeriod, customStartDate, customEndDate, currentTimeMillis) {
         if (selectedPeriod == "Tanggal") {
             "${WibDateUtils.format("dd/MM/yy", customStartDate)} - ${WibDateUtils.format("dd/MM/yy", customEndDate)}"
+        } else if (selectedPeriod in listOf("Hari Ini", "Hari ini")) {
+            "Hari Ini (${WibDateUtils.format("dd MMM yyyy", currentTimeMillis)})"
         } else selectedPeriod
+    }
+
+    val standardComponents = remember {
+        listOf(
+            Pair(1, "Bowl"),
+            Pair(2, "Nozzle"),
+            Pair(3, "Seal"),
+            Pair(4, "Bearing"),
+            Pair(5, "Shaft"),
+            Pair(6, "Belt"),
+            Pair(7, "Motor"),
+            Pair(8, "Gland Packing"),
+            Pair(9, "Selenoid Valve"),
+            Pair(10, "Timer"),
+            Pair(11, "Mechanical Seal"),
+            Pair(12, "Mesh")
+        )
+    }
+
+    val reportRows = remember(filteredReports, currentTimeMillis, standardComponents) {
+        val nowMillis = currentTimeMillis
+        val rows = standardComponents.map { (no, name) ->
+            val matched = filteredReports.filter {
+                it.title.contains(name, ignoreCase = true) || it.description.contains(name, ignoreCase = true)
+            }
+            val modes = matched.mapNotNull { r ->
+                val parts = r.title.split("-")
+                if (parts.size >= 2) parts[1].substringBefore("(").trim() else null
+            }.filter { it.isNotBlank() }.distinct()
+            val modeSummary = when {
+                matched.isEmpty() -> "-"
+                modes.isNotEmpty() -> modes.joinToString(", ")
+                else -> "${matched.size}x temuan"
+            }
+            val openReports = matched.filter { it.status.equals("Open", ignoreCase = true) }
+            val doneReports = matched.filter { it.status.equals("Done", ignoreCase = true) }
+            val openCases = openReports.size
+            val doneCases = doneReports.size
+            val openLeadTimes = openReports.map { r ->
+                maxOf(0L, (nowMillis - r.timestamp) / (24L * 3600 * 1000L))
+            }
+            val doneLeadTimes = doneReports.map { r ->
+                val endMillis = if (r.resolvedTimestamp > 0L) r.resolvedTimestamp else nowMillis
+                maxOf(0L, (endMillis - r.timestamp) / (24L * 3600 * 1000L))
+            }
+            val longestOpenLead = openLeadTimes.maxOrNull()
+            val maxDoneLead = doneLeadTimes.maxOrNull()
+            val allLeadTimes = openLeadTimes + doneLeadTimes
+            val avgLead = if (allLeadTimes.isNotEmpty()) allLeadTimes.average() else 0.0
+            val maxLead = allLeadTimes.maxOrNull() ?: 0L
+
+            ReportRowAccumulation(
+                no = no,
+                component = name,
+                failureModesSummary = modeSummary,
+                totalSeverity = matched.sumOf { it.severityScore },
+                totalOccurrence = matched.sumOf { it.occurrenceScore },
+                totalDetection = matched.sumOf { it.detectionScore },
+                totalRpn = matched.sumOf { it.rpn },
+                count = matched.size,
+                openCount = openCases,
+                doneCount = doneCases,
+                avgLeadTimeDays = avgLead,
+                maxLeadTimeDays = maxLead,
+                longestOpenLeadDays = longestOpenLead,
+                maxDoneLeadDays = maxDoneLead
+            )
+        }.toMutableList()
+
+        // Row 13: Komponen Tambahan (Manual Input)
+        val nonStandardReports = filteredReports.filter { r ->
+            standardComponents.none { (_, name) -> r.title.contains(name, ignoreCase = true) }
+        }
+        val customModes = nonStandardReports.mapNotNull { r ->
+            val parts = r.title.split("-")
+            if (parts.size >= 2) parts[1].substringBefore("(").trim() else null
+        }.filter { it.isNotBlank() }.distinct()
+        val customCompName = nonStandardReports.firstOrNull()?.let {
+            it.title.substringBefore("-").trim().takeIf { s -> s.isNotBlank() }
+        } ?: "Lainnya"
+        val customModeSummary = when {
+            nonStandardReports.isEmpty() -> "-"
+            customModes.isNotEmpty() -> customModes.joinToString(", ")
+            else -> "${nonStandardReports.size}x temuan"
+        }
+        val customOpenReports = nonStandardReports.filter { it.status.equals("Open", ignoreCase = true) }
+        val customDoneReports = nonStandardReports.filter { it.status.equals("Done", ignoreCase = true) }
+        val customOpenCases = customOpenReports.size
+        val customDoneCases = customDoneReports.size
+        val customOpenLeadTimes = customOpenReports.map { r ->
+            maxOf(0L, (nowMillis - r.timestamp) / (24L * 3600 * 1000L))
+        }
+        val customDoneLeadTimes = customDoneReports.map { r ->
+            val endMillis = if (r.resolvedTimestamp > 0L) r.resolvedTimestamp else nowMillis
+            maxOf(0L, (endMillis - r.timestamp) / (24L * 3600 * 1000L))
+        }
+        val customLongestOpenLead = customOpenLeadTimes.maxOrNull()
+        val customMaxDoneLead = customDoneLeadTimes.maxOrNull()
+        val customAllLeadTimes = customOpenLeadTimes + customDoneLeadTimes
+        val customAvgLead = if (customAllLeadTimes.isNotEmpty()) customAllLeadTimes.average() else 0.0
+        val customMaxLead = customAllLeadTimes.maxOrNull() ?: 0L
+
+        rows.add(
+            ReportRowAccumulation(
+                no = 13,
+                component = customCompName,
+                failureModesSummary = customModeSummary,
+                totalSeverity = nonStandardReports.sumOf { it.severityScore },
+                totalOccurrence = nonStandardReports.sumOf { it.occurrenceScore },
+                totalDetection = nonStandardReports.sumOf { it.detectionScore },
+                totalRpn = nonStandardReports.sumOf { it.rpn },
+                count = nonStandardReports.size,
+                openCount = customOpenCases,
+                doneCount = customDoneCases,
+                avgLeadTimeDays = customAvgLead,
+                maxLeadTimeDays = customMaxLead,
+                longestOpenLeadDays = customLongestOpenLead,
+                maxDoneLeadDays = customMaxDoneLead
+            )
+        )
+        rows
+    }
+
+    val sumAllRpn = remember(reportRows) { reportRows.sumOf { it.totalRpn } }
+    val sumAllCount = remember(reportRows) { reportRows.sumOf { it.count } }
+    val sumAllOpen = remember(reportRows) { reportRows.sumOf { it.openCount } }
+    val sumAllDone = remember(reportRows) { reportRows.sumOf { it.doneCount } }
+    val maxOverallOpenLead = remember(filteredReports, currentTimeMillis) {
+        val nowMillis = currentTimeMillis
+        filteredReports
+            .filter { it.status.equals("Open", ignoreCase = true) }
+            .map { maxOf(0L, (nowMillis - it.timestamp) / (24L * 3600 * 1000L)) }
+            .maxOrNull()
+    }
+    val totalOverallAvgLead = remember(filteredReports, currentTimeMillis) {
+        val nowMillis = currentTimeMillis
+        val allReportLeadTimes = filteredReports.map { r ->
+            val endMillis = if (!r.status.equals("Open", ignoreCase = true) && r.resolvedTimestamp > 0L) {
+                r.resolvedTimestamp
+            } else {
+                nowMillis
+            }
+            maxOf(0L, (endMillis - r.timestamp) / (24L * 3600 * 1000L))
+        }
+        if (allReportLeadTimes.isNotEmpty()) allReportLeadTimes.average() else 0.0
     }
 
     Column(
@@ -7367,7 +7688,7 @@ fun AbnormalityScreen(
         item {
             Card(
                 colors = CardDefaults.cardColors(containerColor = Color.White),
-                shape = RoundedCornerShape(24.dp),
+                shape = RoundedCornerShape(20.dp),
                 border = BorderStroke(1.dp, Color(0xFFF1F5F9)),
                 elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
             ) {
@@ -7491,445 +7812,404 @@ fun AbnormalityScreen(
                         }
                     }
 
-                    // Pilihan Mesin Dropdown
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        Text(
-                            text = "Pilih Mesin :",
-                            fontSize = 13.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = SlateGrey
-                        )
-                        Box(modifier = Modifier.weight(1f)) {
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .clip(RoundedCornerShape(8.dp))
-                                    .background(Color.White)
-                                    .border(
-                                        width = 1.dp,
-                                        color = if (machineDropdownExpanded) BrandGreen else Color(0xFFCBD5E1),
-                                        shape = RoundedCornerShape(8.dp)
-                                    )
-                                    .clickable { machineDropdownExpanded = !machineDropdownExpanded }
-                                    .padding(horizontal = 12.dp, vertical = 10.dp)
-                                    .testTag("abnormality_machine_dropdown"),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.SpaceBetween
-                            ) {
-                                Text(
-                                    text = selectedMachine,
-                                    fontSize = 13.sp,
-                                    fontWeight = FontWeight.SemiBold,
-                                    color = Color.Black
-                                )
-                                Icon(
-                                    imageVector = Icons.Default.ArrowDropDown,
-                                    contentDescription = "Pilih Mesin",
-                                    tint = Color.Black
-                                )
-                            }
-                            DropdownMenu(
-                                expanded = machineDropdownExpanded,
-                                onDismissRequest = { machineDropdownExpanded = false },
-                                modifier = Modifier.background(Color.White)
-                            ) {
-                                machineList.forEach { m ->
-                                    val isMachineSelected = selectedMachine == m
-                                    DropdownMenuItem(
-                                        text = {
-                                            Text(
-                                                m,
-                                                fontSize = 13.sp,
-                                                fontWeight = if (isMachineSelected) FontWeight.Bold else FontWeight.Normal,
-                                                color = Color.Black
-                                            )
-                                        },
-                                        onClick = {
-                                            selectedMachine = m
-                                            machineDropdownExpanded = false
-                                        },
-                                        leadingIcon = if (isMachineSelected) {
-                                            {
-                                                Box(
-                                                    modifier = Modifier
-                                                        .size(18.dp)
-                                                        .background(Color(0xFF16A34A), CircleShape),
-                                                    contentAlignment = Alignment.Center
-                                                ) {
-                                                    Icon(Icons.Default.Check, contentDescription = null, tint = Color.White, modifier = Modifier.size(12.dp))
-                                                }
-                                            }
-                                        } else null,
-                                        modifier = Modifier.background(if (isMachineSelected) Color(0xFF86EFAC) else Color.White)
-                                    )
-                                }
-                            }
-                        }
-                    }
-
-                    // Judul: Identifikasi Failure Mode & Tabel
+                    // Judul: Identifikasi Failure Mode
                     Text(
                         text = "Identifikasi Failure Mode",
                         fontSize = 14.sp,
                         fontWeight = FontWeight.Bold,
                         color = SlateGrey
                     )
+                }
+            }
+        }
 
-                    // Tabel Failure Mode dengan Freeze Pane untuk Kolom No & Komponen
-                    Card(
-                        modifier = Modifier.fillMaxWidth(),
-                        shape = RoundedCornerShape(8.dp),
-                        colors = CardDefaults.cardColors(containerColor = Color.White),
-                        border = BorderStroke(1.dp, Color(0xFFE2E8F0)),
-                        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
+        // FREEZE PANE STICKY HEADER: No, Komponen, Mesin, Failure Mode, Level Severity, Occurence, Detection, RPN
+        stickyHeader {
+            Surface(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(topStart = 8.dp, topEnd = 8.dp),
+                color = Color(0xFF1E293B),
+                shadowElevation = 4.dp
+            ) {
+                Row(modifier = Modifier.fillMaxWidth()) {
+                    // Header Freeze Pane (No & Komponen)
+                    Row(
+                        modifier = Modifier
+                            .width(115.dp)
+                            .height(44.dp)
+                            .background(Color(0xFF1E293B))
+                            .padding(horizontal = 6.dp)
+                            .drawBehind {
+                                drawLine(
+                                    color = Color(0xFF475569),
+                                    start = Offset(size.width, 0f),
+                                    end = Offset(size.width, size.height),
+                                    strokeWidth = 2.dp.toPx()
+                                )
+                            },
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Row(modifier = Modifier.fillMaxWidth()) {
-                            // 1. FREEZE PANE (Kolom No & Komponen disempitkan agar area scrollable lebih luas)
-                            Column(
-                                modifier = Modifier
-                                    .width(100.dp)
-                                    .background(Color.White)
-                                    .drawBehind {
-                                        // Garis pemisah vertikal / pembatas freeze pane
-                                        drawLine(
-                                            color = Color(0xFFCBD5E1),
-                                            start = Offset(size.width, 0f),
-                                            end = Offset(size.width, size.height),
-                                            strokeWidth = 2.dp.toPx()
-                                        )
-                                    }
+                        Text("No", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color.White, modifier = Modifier.width(22.dp), textAlign = TextAlign.Center)
+                        Spacer(modifier = Modifier.width(3.dp))
+                        Text("Komponen", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color.White, modifier = Modifier.weight(1f))
+                    }
+
+                    // Header Scrollable Pane (Mesin, Failure Mode, Level Severity, Occurence, Detection, RPN)
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .horizontalScroll(inputTableScrollState)
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .height(44.dp)
+                                .background(Color(0xFF1E293B))
+                                .padding(horizontal = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text("Mesin", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color.White, modifier = Modifier.width(160.dp), textAlign = TextAlign.Center)
+                            Text("Failure Mode", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color.White, modifier = Modifier.width(185.dp))
+                            Row(
+                                modifier = Modifier.width(135.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.Center
                             ) {
-                                // Header Kolom Freeze Pane
-                                Row(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .height(44.dp)
-                                        .background(Color(0xFF1E293B))
-                                        .padding(horizontal = 6.dp),
-                                    verticalAlignment = Alignment.CenterVertically
+                                Text("Level Severity", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                                Spacer(modifier = Modifier.width(2.dp))
+                                IconButton(
+                                    onClick = { showSeverityGuideDialog = true },
+                                    modifier = Modifier.size(20.dp)
                                 ) {
-                                    Text("No", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color.White, modifier = Modifier.width(20.dp), textAlign = TextAlign.Center)
-                                    Spacer(modifier = Modifier.width(3.dp))
-                                    Text("Komponen", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color.White, modifier = Modifier.weight(1f))
-                                }
-
-                                Divider(color = Color(0xFFE2E8F0), thickness = 1.dp)
-
-                                // Baris Data Freeze Pane
-                                failureModeItems.forEachIndexed { idx, item ->
-                                    val isEven = idx % 2 == 0
-                                    Row(
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .height(52.dp)
-                                            .background(if (isEven) Color.White else Color(0xFFF8FAFC))
-                                            .padding(horizontal = 6.dp),
-                                        verticalAlignment = Alignment.CenterVertically
-                                    ) {
-                                        Text(
-                                            text = item.no.toString(),
-                                            fontSize = 11.sp,
-                                            fontWeight = FontWeight.Bold,
-                                            color = SlateGrey,
-                                            modifier = Modifier.width(20.dp),
-                                            textAlign = TextAlign.Center
-                                        )
-                                        Spacer(modifier = Modifier.width(3.dp))
-                                        if (item.isCustomInput) {
-                                            Box(
-                                                modifier = Modifier
-                                                    .weight(1f)
-                                                    .height(32.dp)
-                                                    .clip(RoundedCornerShape(4.dp))
-                                                    .background(Color.White)
-                                                    .border(1.dp, Color(0xFFCBD5E1), RoundedCornerShape(4.dp))
-                                                    .padding(horizontal = 4.dp),
-                                                contentAlignment = Alignment.CenterStart
-                                            ) {
-                                                if (item.component.isEmpty()) {
-                                                    Text(
-                                                        text = "Lainnya...",
-                                                        fontSize = 10.sp,
-                                                        color = Color(0xFF94A3B8)
-                                                    )
-                                                }
-                                                BasicTextField(
-                                                    value = item.component,
-                                                    onValueChange = { item.component = it },
-                                                    singleLine = true,
-                                                    textStyle = TextStyle(
-                                                        fontSize = 11.sp,
-                                                        fontWeight = FontWeight.SemiBold,
-                                                        color = Color.Black
-                                                    ),
-                                                    modifier = Modifier.fillMaxWidth()
-                                                )
-                                            }
-                                        } else {
-                                            Text(
-                                                text = item.component,
-                                                fontSize = 11.sp,
-                                                fontWeight = FontWeight.SemiBold,
-                                                color = Color.Black,
-                                                modifier = Modifier.weight(1f),
-                                                maxLines = 1,
-                                                overflow = TextOverflow.Ellipsis
-                                            )
-                                        }
-                                    }
-                                    if (idx < failureModeItems.size - 1) {
-                                        Divider(color = Color(0xFFF1F5F9), thickness = 1.dp)
-                                    }
+                                    Icon(
+                                        imageVector = Icons.Default.Info,
+                                        contentDescription = "Panduan Severity",
+                                        tint = Color(0xFFFCD34D),
+                                        modifier = Modifier.size(14.dp)
+                                    )
                                 }
                             }
-
-                            // 2. SCROLLABLE PANE (Kolom Failure Mode, Severity, Occurence, Detection, RPN)
-                            Box(
-                                modifier = Modifier
-                                    .weight(1f)
-                                    .horizontalScroll(rememberScrollState())
+                            Row(
+                                modifier = Modifier.width(145.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.Center
                             ) {
-                                Column(modifier = Modifier.background(Color.White)) {
-                                    // Header Kolom Scrollable
-                                    Row(
-                                        modifier = Modifier
-                                            .height(44.dp)
-                                            .background(Color(0xFF1E293B))
-                                            .padding(horizontal = 8.dp),
-                                        verticalAlignment = Alignment.CenterVertically
-                                    ) {
-                                        Text("Failure Mode", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color.White, modifier = Modifier.width(185.dp))
-                                        Row(
-                                            modifier = Modifier.width(135.dp),
-                                            verticalAlignment = Alignment.CenterVertically,
-                                            horizontalArrangement = Arrangement.Center
-                                        ) {
-                                            Text("Level Severity", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color.White)
-                                            Spacer(modifier = Modifier.width(2.dp))
-                                            IconButton(
-                                                onClick = { showSeverityGuideDialog = true },
-                                                modifier = Modifier.size(20.dp)
-                                            ) {
-                                                Icon(
-                                                    imageVector = Icons.Default.Info,
-                                                    contentDescription = "Panduan Severity",
-                                                    tint = Color(0xFFFCD34D),
-                                                    modifier = Modifier.size(14.dp)
-                                                )
-                                            }
-                                        }
-                                        Row(
-                                            modifier = Modifier.width(145.dp),
-                                            verticalAlignment = Alignment.CenterVertically,
-                                            horizontalArrangement = Arrangement.Center
-                                        ) {
-                                            Text("Occurence", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color.White)
-                                            Spacer(modifier = Modifier.width(2.dp))
-                                            IconButton(
-                                                onClick = { showOccurenceGuideDialog = true },
-                                                modifier = Modifier.size(20.dp)
-                                            ) {
-                                                Icon(
-                                                    imageVector = Icons.Default.Info,
-                                                    contentDescription = "Panduan Occurence",
-                                                    tint = Color(0xFFFCD34D),
-                                                    modifier = Modifier.size(14.dp)
-                                                )
-                                            }
-                                        }
-                                        Row(
-                                            modifier = Modifier.width(135.dp),
-                                            verticalAlignment = Alignment.CenterVertically,
-                                            horizontalArrangement = Arrangement.Center
-                                        ) {
-                                            Text("Detection", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color.White)
-                                            Spacer(modifier = Modifier.width(2.dp))
-                                            IconButton(
-                                                onClick = { showDetectionGuideDialog = true },
-                                                modifier = Modifier.size(20.dp)
-                                            ) {
-                                                Icon(
-                                                    imageVector = Icons.Default.Info,
-                                                    contentDescription = "Panduan Detection",
-                                                    tint = Color(0xFFFCD34D),
-                                                    modifier = Modifier.size(14.dp)
-                                                )
-                                            }
-                                        }
-                                        Text("Risk Priority Number (RPN)", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color.White, modifier = Modifier.width(170.dp), textAlign = TextAlign.Center)
-                                    }
-
-                                    Divider(color = Color(0xFFE2E8F0), thickness = 1.dp)
-
-                                    // Baris Data Scrollable
-                                    failureModeItems.forEachIndexed { idx, item ->
-                                        val isEven = idx % 2 == 0
-                                        val rpnValue = item.severity * item.occurrence * item.detection
-                                        Row(
-                                            modifier = Modifier
-                                                .height(52.dp)
-                                                .background(if (isEven) Color.White else Color(0xFFF8FAFC))
-                                                .padding(horizontal = 8.dp),
-                                            verticalAlignment = Alignment.CenterVertically
-                                        ) {
-                                            if (item.isCustomInput) {
-                                                Box(
-                                                    modifier = Modifier
-                                                        .width(185.dp)
-                                                        .height(34.dp)
-                                                        .padding(end = 8.dp)
-                                                        .clip(RoundedCornerShape(6.dp))
-                                                        .background(Color.White)
-                                                        .border(1.dp, Color(0xFFCBD5E1), RoundedCornerShape(6.dp))
-                                                        .padding(horizontal = 8.dp),
-                                                    contentAlignment = Alignment.CenterStart
-                                                ) {
-                                                    if (item.selectedFailureMode.isEmpty()) {
-                                                        Text(
-                                                            text = "Ketik failure mode...",
-                                                            fontSize = 11.sp,
-                                                            color = Color(0xFF94A3B8)
-                                                        )
-                                                    }
-                                                    BasicTextField(
-                                                        value = item.selectedFailureMode,
-                                                        onValueChange = { item.selectedFailureMode = it },
-                                                        singleLine = true,
-                                                        textStyle = TextStyle(
-                                                            fontSize = 11.sp,
-                                                            fontWeight = FontWeight.Medium,
-                                                            color = Color.Black
-                                                        ),
-                                                        modifier = Modifier.fillMaxWidth()
-                                                    )
-                                                }
-                                            } else {
-                                                FailureModeOptionDropdown(
-                                                    selected = item.selectedFailureMode,
-                                                    options = item.failureModeOptions,
-                                                    onSelect = { item.selectedFailureMode = it },
-                                                    isCustomMode = item.isCustomMode,
-                                                    onCustomModeChange = { item.isCustomMode = it },
-                                                    modifier = Modifier
-                                                        .width(185.dp)
-                                                        .padding(end = 8.dp)
-                                                )
-                                            }
-                                            Box(modifier = Modifier.width(135.dp), contentAlignment = Alignment.Center) {
-                                                LevelDropdown(
-                                                    value = item.severity,
-                                                    options = SeverityLevelOptions,
-                                                    onValueChange = { item.severity = it }
-                                                )
-                                            }
-                                            Box(modifier = Modifier.width(145.dp), contentAlignment = Alignment.Center) {
-                                                LevelDropdown(
-                                                    value = item.occurrence,
-                                                    options = OccurrenceLevelOptions,
-                                                    onValueChange = { item.occurrence = it }
-                                                )
-                                            }
-                                            Box(modifier = Modifier.width(135.dp), contentAlignment = Alignment.Center) {
-                                                LevelDropdown(
-                                                    value = item.detection,
-                                                    options = DetectionLevelOptions,
-                                                    onValueChange = { item.detection = it }
-                                                )
-                                            }
-                                            Box(modifier = Modifier.width(170.dp), contentAlignment = Alignment.Center) {
-                                                val rpnBg = when {
-                                                    rpnValue >= 100 -> Color(0xFFFEE2E2)
-                                                    rpnValue >= 50 -> Color(0xFFFEF3C7)
-                                                    else -> Color(0xFFF1F5F9)
-                                                }
-                                                val rpnTextColor = when {
-                                                    rpnValue >= 100 -> Color(0xFFDC2626)
-                                                    rpnValue >= 50 -> Color(0xFFD97706)
-                                                    else -> Color(0xFF0F172A)
-                                                }
-                                                Surface(
-                                                    color = rpnBg,
-                                                    shape = RoundedCornerShape(6.dp),
-                                                    border = BorderStroke(1.dp, rpnTextColor.copy(alpha = 0.3f))
-                                                ) {
-                                                    Text(
-                                                        text = rpnValue.toString(),
-                                                        fontSize = 13.sp,
-                                                        fontWeight = FontWeight.Bold,
-                                                        color = rpnTextColor,
-                                                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp)
-                                                    )
-                                                }
-                                            }
-                                        }
-                                        if (idx < failureModeItems.size - 1) {
-                                            Divider(color = Color(0xFFF1F5F9), thickness = 1.dp)
-                                        }
-                                    }
+                                Text("Occurence", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                                Spacer(modifier = Modifier.width(2.dp))
+                                IconButton(
+                                    onClick = { showOccurenceGuideDialog = true },
+                                    modifier = Modifier.size(20.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.Info,
+                                        contentDescription = "Panduan Occurence",
+                                        tint = Color(0xFFFCD34D),
+                                        modifier = Modifier.size(14.dp)
+                                    )
                                 }
+                            }
+                            Row(
+                                modifier = Modifier.width(135.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.Center
+                            ) {
+                                Text("Detection", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                                Spacer(modifier = Modifier.width(2.dp))
+                                IconButton(
+                                    onClick = { showDetectionGuideDialog = true },
+                                    modifier = Modifier.size(20.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.Info,
+                                        contentDescription = "Panduan Detection",
+                                        tint = Color(0xFFFCD34D),
+                                        modifier = Modifier.size(14.dp)
+                                    )
+                                }
+                            }
+                            Text("Risk Priority Number (RPN)", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color.White, modifier = Modifier.width(170.dp), textAlign = TextAlign.Center)
+                        }
+                    }
+                }
+            }
+        }
+
+        item {
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(bottomStart = 8.dp, bottomEnd = 8.dp),
+                colors = CardDefaults.cardColors(containerColor = Color.White),
+                border = BorderStroke(1.dp, Color(0xFFCBD5E1)),
+                elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
+            ) {
+                Row(modifier = Modifier.fillMaxWidth()) {
+                    // 1. FREEZE PANE (Kolom No & Komponen)
+                    Column(
+                        modifier = Modifier
+                            .width(115.dp)
+                            .background(Color.White)
+                            .drawBehind {
+                                // Garis pemisah vertikal / pembatas freeze pane
+                                drawLine(
+                                    color = Color(0xFFCBD5E1),
+                                    start = Offset(size.width, 0f),
+                                    end = Offset(size.width, size.height),
+                                    strokeWidth = 2.dp.toPx()
+                                )
+                            }
+                    ) {
+                        // Baris Data Freeze Pane
+                        failureModeItems.forEachIndexed { idx, item ->
+                            val isEven = idx % 2 == 0
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(52.dp)
+                                    .background(if (isEven) Color.White else Color(0xFFF8FAFC))
+                                    .padding(horizontal = 6.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    text = item.no.toString(),
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = SlateGrey,
+                                    modifier = Modifier.width(22.dp),
+                                    textAlign = TextAlign.Center
+                                )
+                                Spacer(modifier = Modifier.width(3.dp))
+                                if (item.isCustomInput) {
+                                    Box(
+                                        modifier = Modifier
+                                            .weight(1f)
+                                            .height(32.dp)
+                                            .clip(RoundedCornerShape(4.dp))
+                                            .background(Color.White)
+                                            .border(1.dp, Color(0xFFCBD5E1), RoundedCornerShape(4.dp))
+                                            .padding(horizontal = 4.dp),
+                                        contentAlignment = Alignment.CenterStart
+                                    ) {
+                                        if (item.component.isEmpty()) {
+                                            Text(
+                                                text = "Lainnya...",
+                                                fontSize = 10.sp,
+                                                color = Color(0xFF94A3B8)
+                                            )
+                                        }
+                                        BasicTextField(
+                                            value = item.component,
+                                            onValueChange = { item.component = it },
+                                            singleLine = true,
+                                            textStyle = TextStyle(
+                                                fontSize = 11.sp,
+                                                fontWeight = FontWeight.SemiBold,
+                                                color = Color.Black
+                                            ),
+                                            modifier = Modifier.fillMaxWidth()
+                                        )
+                                    }
+                                } else {
+                                    Text(
+                                        text = item.component,
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.SemiBold,
+                                        color = Color.Black,
+                                        modifier = Modifier.weight(1f),
+                                        maxLines = 2,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                }
+                            }
+                            if (idx < failureModeItems.size - 1) {
+                                HorizontalDivider(color = Color(0xFFF1F5F9), thickness = 1.dp)
                             }
                         }
                     }
 
-                    Spacer(modifier = Modifier.height(8.dp))
-
-                    Button(
-                        onClick = {
-                            val activeItems = failureModeItems.filter { it.severity > 0 || it.occurrence > 0 || it.detection > 0 }
-                            val itemsToSave = if (activeItems.isNotEmpty()) activeItems else listOf(failureModeItems.first())
-                            itemsToSave.forEach { item ->
-                                val calculatedRpn = item.severity * item.occurrence * item.detection
-                                val compName = if (item.component.isNotBlank()) item.component else "Komponen Tambahan"
-                                val failMode = if (item.selectedFailureMode.isNotBlank()) item.selectedFailureMode else "Potensi Kerusakan"
-                                val finalTitle = "$compName - $failMode ($selectedMachine)"
-                                val finalDesc = "Identifikasi failure mode $failMode pada komponen $compName mesin $selectedMachine oleh $selectedOperator (Shift $selectedShift) (RPN: $calculatedRpn)."
-                                onAddReport(
-                                    AbnormalityReport(
-                                        title = finalTitle,
-                                        description = finalDesc,
-                                        factor = factor,
-                                        severityScore = item.severity,
-                                        occurrenceScore = item.occurrence,
-                                        detectionScore = item.detection,
-                                        rpn = calculatedRpn,
-                                        photoUri = null,
-                                        picName = "$selectedOperator ($selectedShift)",
-                                        tagType = "",
-                                        status = "Open",
-                                        mechanicName = "",
-                                        repairNotes = "",
-                                        resolvedTimestamp = 0L
-                                    )
-                                )
-                            }
-                            Toast.makeText(context, "Laporan Abnormality Tersimpan (${itemsToSave.size} item)!", Toast.LENGTH_SHORT).show()
-                            // Reset input
-                            failureModeItems.forEach {
-                                if (it.isCustomInput) {
-                                    it.component = ""
-                                    it.selectedFailureMode = ""
-                                } else {
-                                    it.isCustomMode = false
-                                    it.selectedFailureMode = it.failureModeOptions.firstOrNull() ?: ""
-                                }
-                                it.severity = 0
-                                it.occurrence = 0
-                                it.detection = 0
-                            }
-                        },
-                        colors = ButtonDefaults.buttonColors(containerColor = BrandRed),
+                    // 2. SCROLLABLE PANE (Kolom Mesin, Failure Mode, Severity, Occurence, Detection, RPN)
+                    Box(
                         modifier = Modifier
-                            .fillMaxWidth()
-                            .height(48.dp)
-                            .testTag("submit_abnormality_button")
+                            .weight(1f)
+                            .horizontalScroll(inputTableScrollState)
                     ) {
-                        Text("SIMPAN TEMUAN KERUSAKAN", color = Color.White, fontWeight = FontWeight.Bold)
+                        Column(modifier = Modifier.background(Color.White)) {
+                            // Baris Data Scrollable
+                            failureModeItems.forEachIndexed { idx, item ->
+                                val isEven = idx % 2 == 0
+                                val rpnValue = item.severity * item.occurrence * item.detection
+                                Row(
+                                    modifier = Modifier
+                                        .height(52.dp)
+                                        .background(if (isEven) Color.White else Color(0xFFF8FAFC))
+                                        .padding(horizontal = 8.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    // Kolom Mesin Dropdown
+                                    Box(modifier = Modifier.width(160.dp).padding(end = 8.dp), contentAlignment = Alignment.Center) {
+                                        MachineOptionDropdown(
+                                            selected = item.selectedMachine,
+                                            options = machineList,
+                                            onSelect = { item.selectedMachine = it }
+                                        )
+                                    }
+
+                                    // Kolom Failure Mode
+                                    if (item.isCustomInput || item.isManualFailureMode) {
+                                        Box(
+                                            modifier = Modifier
+                                                .width(185.dp)
+                                                .height(34.dp)
+                                                .padding(end = 8.dp)
+                                                .clip(RoundedCornerShape(6.dp))
+                                                .background(Color.White)
+                                                .border(1.dp, Color(0xFFCBD5E1), RoundedCornerShape(6.dp))
+                                                .padding(horizontal = 8.dp),
+                                            contentAlignment = Alignment.CenterStart
+                                        ) {
+                                            if (item.selectedFailureMode.isEmpty()) {
+                                                Text(
+                                                    text = "Ketik failure mode...",
+                                                    fontSize = 11.sp,
+                                                    color = Color(0xFF94A3B8)
+                                                )
+                                            }
+                                            BasicTextField(
+                                                value = item.selectedFailureMode,
+                                                onValueChange = { item.selectedFailureMode = it },
+                                                singleLine = true,
+                                                textStyle = TextStyle(
+                                                    fontSize = 11.sp,
+                                                    fontWeight = FontWeight.Medium,
+                                                    color = Color.Black
+                                                ),
+                                                modifier = Modifier.fillMaxWidth()
+                                            )
+                                        }
+                                    } else {
+                                        FailureModeOptionDropdown(
+                                            selected = item.selectedFailureMode,
+                                            options = item.failureModeOptions,
+                                            onSelect = { item.selectedFailureMode = it },
+                                            isCustomMode = item.isCustomMode,
+                                            onCustomModeChange = { item.isCustomMode = it },
+                                            modifier = Modifier
+                                                .width(185.dp)
+                                                .padding(end = 8.dp)
+                                        )
+                                    }
+                                    Box(modifier = Modifier.width(135.dp), contentAlignment = Alignment.Center) {
+                                        LevelDropdown(
+                                            value = item.severity,
+                                            options = SeverityLevelOptions,
+                                            onValueChange = { item.severity = it }
+                                        )
+                                    }
+                                    Box(modifier = Modifier.width(145.dp), contentAlignment = Alignment.Center) {
+                                        LevelDropdown(
+                                            value = item.occurrence,
+                                            options = OccurrenceLevelOptions,
+                                            onValueChange = { item.occurrence = it }
+                                        )
+                                    }
+                                    Box(modifier = Modifier.width(135.dp), contentAlignment = Alignment.Center) {
+                                        LevelDropdown(
+                                            value = item.detection,
+                                            options = DetectionLevelOptions,
+                                            onValueChange = { item.detection = it }
+                                        )
+                                    }
+                                    Box(modifier = Modifier.width(170.dp), contentAlignment = Alignment.Center) {
+                                        val rpnBg = when {
+                                            rpnValue >= 100 -> Color(0xFFFEE2E2)
+                                            rpnValue >= 50 -> Color(0xFFFEF3C7)
+                                            else -> Color(0xFFF1F5F9)
+                                        }
+                                        val rpnTextColor = when {
+                                            rpnValue >= 100 -> Color(0xFFDC2626)
+                                            rpnValue >= 50 -> Color(0xFFD97706)
+                                            else -> Color(0xFF0F172A)
+                                        }
+                                        Surface(
+                                            color = rpnBg,
+                                            shape = RoundedCornerShape(6.dp),
+                                            border = BorderStroke(1.dp, rpnTextColor.copy(alpha = 0.3f))
+                                        ) {
+                                            Text(
+                                                text = rpnValue.toString(),
+                                                fontSize = 13.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                color = rpnTextColor,
+                                                modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp)
+                                            )
+                                        }
+                                    }
+                                }
+                                if (idx < failureModeItems.size - 1) {
+                                    HorizontalDivider(color = Color(0xFFF1F5F9), thickness = 1.dp)
+                                }
+                            }
+                        }
                     }
                 }
+            }
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            Button(
+                onClick = {
+                    val activeItems = failureModeItems.filter { it.severity > 0 || it.occurrence > 0 || it.detection > 0 }
+                    val itemsToSave = if (activeItems.isNotEmpty()) activeItems else listOf(failureModeItems.first())
+                    itemsToSave.forEach { item ->
+                        val calculatedRpn = item.severity * item.occurrence * item.detection
+                        val compName = if (item.component.isNotBlank()) item.component else "Komponen Tambahan"
+                        val failMode = if (item.selectedFailureMode.isNotBlank()) item.selectedFailureMode else "Potensi Kerusakan"
+                        val rowMachine = item.selectedMachine
+                        val finalTitle = "$compName - $failMode ($rowMachine)"
+                        val finalDesc = "Identifikasi failure mode $failMode pada komponen $compName mesin $rowMachine oleh $selectedOperator (Shift $selectedShift) (RPN: $calculatedRpn)."
+                        onAddReport(
+                            AbnormalityReport(
+                                title = finalTitle,
+                                description = finalDesc,
+                                factor = factor,
+                                severityScore = item.severity,
+                                occurrenceScore = item.occurrence,
+                                detectionScore = item.detection,
+                                rpn = calculatedRpn,
+                                photoUri = null,
+                                picName = "$selectedOperator ($selectedShift)",
+                                tagType = "",
+                                status = "Open",
+                                mechanicName = "",
+                                repairNotes = "",
+                                resolvedTimestamp = 0L
+                            )
+                        )
+                    }
+                    Toast.makeText(context, "Laporan Abnormality Tersimpan (${itemsToSave.size} item)!", Toast.LENGTH_SHORT).show()
+                    // Reset input
+                    failureModeItems.forEach {
+                        if (it.isCustomInput) {
+                            it.component = ""
+                            it.selectedFailureMode = ""
+                        } else if (it.isManualFailureMode) {
+                            it.selectedFailureMode = ""
+                            it.isCustomMode = true
+                        } else {
+                            it.isCustomMode = false
+                            it.selectedFailureMode = it.failureModeOptions.firstOrNull() ?: ""
+                        }
+                        it.selectedMachine = "SC-01"
+                        it.severity = 0
+                        it.occurrence = 0
+                        it.detection = 0
+                    }
+                },
+                colors = ButtonDefaults.buttonColors(containerColor = BrandRed),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(48.dp)
+                    .testTag("submit_abnormality_button")
+            ) {
+                Text("SIMPAN TEMUAN KERUSAKAN", color = Color.White, fontWeight = FontWeight.Bold)
             }
         }
 
@@ -8258,7 +8538,7 @@ fun AbnormalityScreen(
 
             // 2. TABEL REPORT AKUMULASI (IDENTIK DENGAN TABEL INPUT DENGAN FREEZE PANE)
             item {
-                // Kalkulasi data akumulasi per baris komponen 1 s/d 8
+                // Kalkulasi data akumulasi per baris komponen 1 s/d 12 (sama persis dengan tabel Input Abnormality)
                 val standardComponents = listOf(
                     Pair(1, "Bowl"),
                     Pair(2, "Nozzle"),
@@ -8266,10 +8546,15 @@ fun AbnormalityScreen(
                     Pair(4, "Bearing"),
                     Pair(5, "Shaft"),
                     Pair(6, "Belt"),
-                    Pair(7, "Motor")
+                    Pair(7, "Motor"),
+                    Pair(8, "Gland Packing"),
+                    Pair(9, "Selenoid Valve"),
+                    Pair(10, "Timer"),
+                    Pair(11, "Mechanical Seal"),
+                    Pair(12, "Mesh")
                 )
 
-                val nowMillis = System.currentTimeMillis()
+                val nowMillis = currentTimeMillis
                 val reportRows = standardComponents.map { (no, name) ->
                     val matched = filteredReports.filter {
                         it.title.contains(name, ignoreCase = true) || it.description.contains(name, ignoreCase = true)
@@ -8318,7 +8603,7 @@ fun AbnormalityScreen(
                     )
                 }.toMutableList()
 
-                // Row 8: Komponen Tambahan (Manual Input)
+                // Row 13: Komponen Tambahan (Manual Input)
                 val nonStandardReports = filteredReports.filter { r ->
                     standardComponents.none { (_, name) -> r.title.contains(name, ignoreCase = true) }
                 }
@@ -8328,7 +8613,7 @@ fun AbnormalityScreen(
                 }.filter { it.isNotBlank() }.distinct()
                 val customCompName = nonStandardReports.firstOrNull()?.let {
                     it.title.substringBefore("-").trim().takeIf { s -> s.isNotBlank() }
-                } ?: "Komponen Tambahan"
+                } ?: "Lainnya"
                 val customModeSummary = when {
                     nonStandardReports.isEmpty() -> "-"
                     customModes.isNotEmpty() -> customModes.joinToString(", ")
@@ -8353,7 +8638,7 @@ fun AbnormalityScreen(
 
                 reportRows.add(
                     ReportRowAccumulation(
-                        no = 8,
+                        no = 13,
                         component = customCompName,
                         failureModesSummary = customModeSummary,
                         totalSeverity = nonStandardReports.sumOf { it.severityScore },
@@ -8390,461 +8675,489 @@ fun AbnormalityScreen(
 
                 Card(
                     colors = CardDefaults.cardColors(containerColor = Color.White),
-                    shape = RoundedCornerShape(12.dp),
+                    shape = RoundedCornerShape(topStart = 12.dp, topEnd = 12.dp),
                     border = BorderStroke(1.dp, Color(0xFFCBD5E1)),
                     elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
                     modifier = Modifier.fillMaxWidth()
                 ) {
-                    Column {
-                        // Title bar tabel
+                    // Title bar tabel
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .background(Color(0xFFF1F5F9))
+                            .padding(horizontal = 12.dp, vertical = 8.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = "Akumulasi FMEA ($periodDisplayLabel • $selectedReportMachine)",
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = SlateGrey
+                        )
+                        Text(
+                            text = "Total: $sumAllCount Laporan",
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = BrandGreen
+                        )
+                    }
+                }
+            }
+
+            // FREEZE PANE STICKY HEADER REPORT: No, Komponen, RPN, Jml Temuan, Status, Lead Time, Failure Mode
+            stickyHeader {
+                Surface(
+                    modifier = Modifier.fillMaxWidth(),
+                    color = Color(0xFF1E293B),
+                    shadowElevation = 4.dp
+                ) {
+                    Row(modifier = Modifier.fillMaxWidth()) {
+                        // Header Freeze Pane (No & Komponen)
                         Row(
                             modifier = Modifier
-                                .fillMaxWidth()
-                                .background(Color(0xFFF1F5F9))
-                                .padding(horizontal = 12.dp, vertical = 8.dp),
-                            horizontalArrangement = Arrangement.SpaceBetween,
+                                .width(105.dp)
+                                .height(44.dp)
+                                .background(Color(0xFF1E293B))
+                                .padding(horizontal = 6.dp)
+                                .drawBehind {
+                                    drawLine(
+                                        color = Color(0xFF475569),
+                                        start = Offset(size.width, 0f),
+                                        end = Offset(size.width, size.height),
+                                        strokeWidth = 2.dp.toPx()
+                                    )
+                                },
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Text(
-                                text = "Akumulasi FMEA ($periodDisplayLabel • $selectedReportMachine)",
-                                fontSize = 12.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = SlateGrey
-                            )
-                            Text(
-                                text = "Total: $sumAllCount Laporan",
-                                fontSize = 11.sp,
-                                fontWeight = FontWeight.SemiBold,
-                                color = BrandGreen
-                            )
+                            Text("No", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color.White, modifier = Modifier.width(20.dp), textAlign = TextAlign.Center)
+                            Spacer(modifier = Modifier.width(3.dp))
+                            Text("Komponen", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color.White, modifier = Modifier.weight(1f))
                         }
 
-                        Row(modifier = Modifier.fillMaxWidth()) {
-                            // 1. FREEZE PANE REPORT (Kolom No & Komponen disempitkan agar area scrollable lebih luas)
-                            Column(
+                        // Header Scrollable Pane (RPN, Jml Temuan, Status, Lead Time, Failure Mode)
+                        Box(
+                            modifier = Modifier
+                                .weight(1f)
+                                .horizontalScroll(reportTableScrollState)
+                        ) {
+                            Row(
                                 modifier = Modifier
-                                    .width(100.dp)
-                                    .background(Color.White)
-                                    .drawBehind {
-                                        drawLine(
-                                            color = Color(0xFFCBD5E1),
-                                            start = Offset(size.width, 0f),
-                                            end = Offset(size.width, size.height),
-                                            strokeWidth = 2.dp.toPx()
-                                        )
-                                    }
+                                    .height(44.dp)
+                                    .background(Color(0xFF1E293B))
+                                    .padding(horizontal = 8.dp),
+                                verticalAlignment = Alignment.CenterVertically
                             ) {
-                                // Header Kolom Freeze Pane
+                                Text("Risk Priority Number (RPN)", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color.White, modifier = Modifier.width(160.dp), textAlign = TextAlign.Center)
+                                Text("Jml Temuan", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color.White, modifier = Modifier.width(95.dp), textAlign = TextAlign.Center)
+                                Text("Status (Open / Done)", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color.White, modifier = Modifier.width(175.dp), textAlign = TextAlign.Center)
+                                Text("Lead Time (Hari)", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color.White, modifier = Modifier.width(120.dp), textAlign = TextAlign.Center)
+                                Text("Failure Mode", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color.White, modifier = Modifier.width(220.dp))
+                            }
+                        }
+                    }
+                }
+            }
+
+            item {
+                Card(
+                    colors = CardDefaults.cardColors(containerColor = Color.White),
+                    shape = RoundedCornerShape(bottomStart = 12.dp, bottomEnd = 12.dp),
+                    border = BorderStroke(1.dp, Color(0xFFCBD5E1)),
+                    elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Row(modifier = Modifier.fillMaxWidth()) {
+                        // 1. FREEZE PANE REPORT BODY (Kolom No & Komponen)
+                        Column(
+                            modifier = Modifier
+                                .width(105.dp)
+                                .background(Color.White)
+                                .drawBehind {
+                                    drawLine(
+                                        color = Color(0xFFCBD5E1),
+                                        start = Offset(size.width, 0f),
+                                        end = Offset(size.width, size.height),
+                                        strokeWidth = 2.dp.toPx()
+                                    )
+                                }
+                        ) {
+                            // Baris Komponen
+                            reportRows.forEachIndexed { idx, row ->
+                                val isEven = idx % 2 == 0
                                 Row(
                                     modifier = Modifier
                                         .fillMaxWidth()
-                                        .height(44.dp)
-                                        .background(Color(0xFF1E293B))
-                                        .padding(horizontal = 6.dp),
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Text("No", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color.White, modifier = Modifier.width(20.dp), textAlign = TextAlign.Center)
-                                    Spacer(modifier = Modifier.width(3.dp))
-                                    Text("Komponen", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color.White, modifier = Modifier.weight(1f))
-                                }
-
-                                Divider(color = Color(0xFFE2E8F0), thickness = 1.dp)
-
-                                // 8 Baris Komponen
-                                reportRows.forEachIndexed { idx, row ->
-                                    val isEven = idx % 2 == 0
-                                    Row(
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .height(52.dp)
-                                            .background(if (isEven) Color.White else Color(0xFFF8FAFC))
-                                            .padding(horizontal = 6.dp),
-                                        verticalAlignment = Alignment.CenterVertically
-                                    ) {
-                                        Text(
-                                            text = row.no.toString(),
-                                            fontSize = 11.sp,
-                                            fontWeight = FontWeight.Bold,
-                                            color = SlateGrey,
-                                            modifier = Modifier.width(20.dp),
-                                            textAlign = TextAlign.Center
-                                        )
-                                        Spacer(modifier = Modifier.width(3.dp))
-                                        Text(
-                                            text = row.component,
-                                            fontSize = 11.sp,
-                                            fontWeight = FontWeight.SemiBold,
-                                            color = Color.Black,
-                                            modifier = Modifier.weight(1f),
-                                            maxLines = 2,
-                                            overflow = TextOverflow.Ellipsis
-                                        )
-                                    }
-                                    if (idx < reportRows.size - 1) {
-                                        Divider(color = Color(0xFFF1F5F9), thickness = 1.dp)
-                                    }
-                                }
-
-                                // Baris TOTAL AKUMULASI (Footer Freeze Pane)
-                                Divider(color = Color(0xFFCBD5E1), thickness = 2.dp)
-                                Row(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .height(48.dp)
-                                        .background(Color(0xFF0F172A))
+                                        .height(52.dp)
+                                        .background(if (isEven) Color.White else Color(0xFFF8FAFC))
                                         .padding(horizontal = 6.dp),
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
                                     Text(
-                                        text = "∑",
-                                        fontSize = 12.sp,
+                                        text = row.no.toString(),
+                                        fontSize = 11.sp,
                                         fontWeight = FontWeight.Bold,
-                                        color = Color.White,
+                                        color = SlateGrey,
                                         modifier = Modifier.width(20.dp),
                                         textAlign = TextAlign.Center
                                     )
                                     Spacer(modifier = Modifier.width(3.dp))
                                     Text(
-                                        text = "TOTAL",
+                                        text = row.component,
                                         fontSize = 11.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        color = Color.White,
-                                        modifier = Modifier.weight(1f)
+                                        fontWeight = FontWeight.SemiBold,
+                                        color = Color.Black,
+                                        modifier = Modifier.weight(1f),
+                                        maxLines = 2,
+                                        overflow = TextOverflow.Ellipsis
                                     )
+                                }
+                                if (idx < reportRows.size - 1) {
+                                    HorizontalDivider(color = Color(0xFFF1F5F9), thickness = 1.dp)
                                 }
                             }
 
-                            // 2. SCROLLABLE PANE REPORT (Failure Mode, Severity, Occurence, Detection, RPN, Jml Temuan)
-                            Box(
+                            // Baris TOTAL AKUMULASI (Footer Freeze Pane)
+                            HorizontalDivider(color = Color(0xFFCBD5E1), thickness = 2.dp)
+                            Row(
                                 modifier = Modifier
-                                    .weight(1f)
-                                    .horizontalScroll(rememberScrollState())
+                                    .fillMaxWidth()
+                                    .height(48.dp)
+                                    .background(Color(0xFF0F172A))
+                                    .padding(horizontal = 6.dp),
+                                verticalAlignment = Alignment.CenterVertically
                             ) {
-                                Column(modifier = Modifier.background(Color.White)) {
-                                    // Header Kolom Scrollable (RPN, Jml Temuan, Status Open/Done, Lead Time, Failure Mode)
+                                Text(
+                                    text = "∑",
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color.White,
+                                    modifier = Modifier.width(20.dp),
+                                    textAlign = TextAlign.Center
+                                )
+                                Spacer(modifier = Modifier.width(3.dp))
+                                Text(
+                                    text = "TOTAL",
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color.White,
+                                    modifier = Modifier.weight(1f)
+                                )
+                            }
+                        }
+
+                        // 2. SCROLLABLE PANE REPORT BODY (RPN, Jml Temuan, Status, Lead Time, Failure Mode)
+                        Box(
+                            modifier = Modifier
+                                .weight(1f)
+                                .horizontalScroll(reportTableScrollState)
+                        ) {
+                            Column(modifier = Modifier.background(Color.White)) {
+                                // Baris Data Scrollable Report
+                                reportRows.forEachIndexed { idx, row ->
+                                    val isEven = idx % 2 == 0
                                     Row(
                                         modifier = Modifier
-                                            .height(44.dp)
-                                            .background(Color(0xFF1E293B))
+                                            .height(52.dp)
+                                            .background(if (isEven) Color.White else Color(0xFFF8FAFC))
                                             .padding(horizontal = 8.dp),
                                         verticalAlignment = Alignment.CenterVertically
                                     ) {
-                                        Text("Risk Priority Number (RPN)", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color.White, modifier = Modifier.width(160.dp), textAlign = TextAlign.Center)
-                                        Text("Jml Temuan", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color.White, modifier = Modifier.width(95.dp), textAlign = TextAlign.Center)
-                                        Text("Status (Open / Done)", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color.White, modifier = Modifier.width(175.dp), textAlign = TextAlign.Center)
-                                        Text("Lead Time (Hari)", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color.White, modifier = Modifier.width(120.dp), textAlign = TextAlign.Center)
-                                        Text("Failure Mode", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color.White, modifier = Modifier.width(220.dp))
-                                    }
-
-                                    HorizontalDivider(color = Color(0xFFE2E8F0), thickness = 1.dp)
-
-                                    // Baris Data Scrollable Report
-                                    reportRows.forEachIndexed { idx, row ->
-                                        val isEven = idx % 2 == 0
-                                        Row(
-                                            modifier = Modifier
-                                                .height(52.dp)
-                                                .background(if (isEven) Color.White else Color(0xFFF8FAFC))
-                                                .padding(horizontal = 8.dp),
-                                            verticalAlignment = Alignment.CenterVertically
-                                        ) {
-                                            // 1. Risk Priority Number (RPN)
-                                            Box(modifier = Modifier.width(160.dp), contentAlignment = Alignment.Center) {
-                                                val rpnBg = when {
-                                                    row.totalRpn >= 100 -> Color(0xFFFEE2E2)
-                                                    row.totalRpn >= 50 -> Color(0xFFFEF3C7)
-                                                    row.totalRpn > 0 -> BrandGreenLight
-                                                    else -> Color(0xFFF1F5F9)
-                                                }
-                                                val rpnTextColor = when {
-                                                    row.totalRpn >= 100 -> Color(0xFFDC2626)
-                                                    row.totalRpn >= 50 -> Color(0xFFD97706)
-                                                    row.totalRpn > 0 -> BrandGreen
-                                                    else -> Color(0xFF64748B)
-                                                }
-                                                Surface(
-                                                    color = rpnBg,
-                                                    shape = RoundedCornerShape(6.dp),
-                                                    border = BorderStroke(1.dp, rpnTextColor.copy(alpha = 0.3f))
-                                                ) {
-                                                    Text(
-                                                        text = row.totalRpn.toString(),
-                                                        fontSize = 13.sp,
-                                                        fontWeight = FontWeight.Bold,
-                                                        color = rpnTextColor,
-                                                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp)
-                                                    )
-                                                }
-                                            }
-
-                                            // 2. Jml Temuan
-                                            Box(modifier = Modifier.width(95.dp), contentAlignment = Alignment.Center) {
-                                                Surface(
-                                                    color = if (row.count > 0) Color(0xFFE2E8F0) else Color(0xFFF8FAFC),
-                                                    shape = RoundedCornerShape(6.dp)
-                                                ) {
-                                                    Text(
-                                                        text = "${row.count}x",
-                                                        fontSize = 11.sp,
-                                                        fontWeight = FontWeight.Bold,
-                                                        color = if (row.count > 0) Color.Black else Color.Gray,
-                                                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
-                                                    )
-                                                }
-                                            }
-
-                                            // 3. Status (Open / Done) - Kolom baru setelah Jml Temuan
-                                            Box(modifier = Modifier.width(175.dp), contentAlignment = Alignment.Center) {
-                                                if (row.count == 0) {
-                                                    Text("-", fontSize = 11.sp, color = Color.LightGray, fontWeight = FontWeight.Bold)
-                                                } else {
-                                                    Row(
-                                                        horizontalArrangement = Arrangement.spacedBy(6.dp),
-                                                        verticalAlignment = Alignment.CenterVertically
-                                                    ) {
-                                                        // Open badge
-                                                        Surface(
-                                                            color = if (row.openCount > 0) Color(0xFFFFF7ED) else Color(0xFFF8FAFC),
-                                                            shape = RoundedCornerShape(6.dp),
-                                                            border = BorderStroke(1.dp, if (row.openCount > 0) Color(0xFFFDBA74) else Color(0xFFE2E8F0))
-                                                        ) {
-                                                            Row(
-                                                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 3.dp),
-                                                                verticalAlignment = Alignment.CenterVertically,
-                                                                horizontalArrangement = Arrangement.spacedBy(4.dp)
-                                                            ) {
-                                                                Box(
-                                                                    modifier = Modifier
-                                                                        .size(6.dp)
-                                                                        .clip(CircleShape)
-                                                                        .background(if (row.openCount > 0) Color(0xFFEA580C) else Color(0xFF94A3B8))
-                                                                )
-                                                                Text(
-                                                                    text = "${row.openCount} Open",
-                                                                    fontSize = 10.5.sp,
-                                                                    fontWeight = FontWeight.Bold,
-                                                                    color = if (row.openCount > 0) Color(0xFFC2410C) else Color(0xFF64748B)
-                                                                )
-                                                            }
-                                                        }
-
-                                                        // Done badge
-                                                        Surface(
-                                                            color = if (row.doneCount > 0) Color(0xFFF0FDF4) else Color(0xFFF8FAFC),
-                                                            shape = RoundedCornerShape(6.dp),
-                                                            border = BorderStroke(1.dp, if (row.doneCount > 0) Color(0xFF86EFAC) else Color(0xFFE2E8F0))
-                                                        ) {
-                                                            Row(
-                                                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 3.dp),
-                                                                verticalAlignment = Alignment.CenterVertically,
-                                                                horizontalArrangement = Arrangement.spacedBy(4.dp)
-                                                            ) {
-                                                                Box(
-                                                                    modifier = Modifier
-                                                                        .size(6.dp)
-                                                                        .clip(CircleShape)
-                                                                        .background(if (row.doneCount > 0) Color(0xFF16A34A) else Color(0xFF94A3B8))
-                                                                )
-                                                                Text(
-                                                                    text = "${row.doneCount} Done",
-                                                                    fontSize = 10.5.sp,
-                                                                    fontWeight = FontWeight.Bold,
-                                                                    color = if (row.doneCount > 0) Color(0xFF15803D) else Color(0xFF64748B)
-                                                                )
-                                                            }
-                                                        }
-                                                    }
-                                                }
-                                            }
-
-                                            // 4. Lead Time (Hari) - Menampilkan hari paling lama dan statusnya masih Open
-                                            Box(modifier = Modifier.width(120.dp), contentAlignment = Alignment.Center) {
-                                                if (row.count == 0) {
-                                                    Text("-", fontSize = 11.sp, color = Color.LightGray, fontWeight = FontWeight.Bold)
-                                                } else {
-                                                    val hasOpen = row.longestOpenLeadDays != null
-                                                    // Jika report pada 1 komponen lebih dari 1 temuan, tampilkan untuk hari yang paling lama dan status masih open
-                                                    val leadDays = if (hasOpen) row.longestOpenLeadDays!! else (row.maxDoneLeadDays ?: 0L)
-                                                    val leadDisplay = "$leadDays hari"
-                                                    val isLongLead = leadDays >= 7L
-                                                    val isMediumLead = leadDays in 3L..6L
-                                                    Surface(
-                                                        color = when {
-                                                            !hasOpen -> Color(0xFFF1F5F9) // Semua temuan komponen selesai (Done)
-                                                            isLongLead -> Color(0xFFFEE2E2)
-                                                            isMediumLead -> Color(0xFFFEF3C7)
-                                                            else -> Color(0xFFF0FDF4)
-                                                        },
-                                                        shape = RoundedCornerShape(6.dp),
-                                                        border = BorderStroke(
-                                                            1.dp,
-                                                            when {
-                                                                !hasOpen -> Color(0xFFCBD5E1)
-                                                                isLongLead -> Color(0xFFFCA5A5)
-                                                                isMediumLead -> Color(0xFFFCD34D)
-                                                                else -> Color(0xFF86EFAC)
-                                                            }
-                                                        )
-                                                    ) {
-                                                        Row(
-                                                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
-                                                            verticalAlignment = Alignment.CenterVertically,
-                                                            horizontalArrangement = Arrangement.spacedBy(4.dp)
-                                                        ) {
-                                                            Icon(
-                                                                imageVector = if (!hasOpen) Icons.Default.CheckCircle else Icons.Default.Schedule,
-                                                                contentDescription = null,
-                                                                tint = when {
-                                                                    !hasOpen -> Color(0xFF475569)
-                                                                    isLongLead -> Color(0xFFDC2626)
-                                                                    isMediumLead -> Color(0xFFD97706)
-                                                                    else -> Color(0xFF15803D)
-                                                                },
-                                                                modifier = Modifier.size(12.dp)
-                                                            )
-                                                            Text(
-                                                                text = leadDisplay,
-                                                                fontSize = 11.sp,
-                                                                fontWeight = FontWeight.Bold,
-                                                                color = when {
-                                                                    !hasOpen -> Color(0xFF334155)
-                                                                    isLongLead -> Color(0xFFDC2626)
-                                                                    isMediumLead -> Color(0xFFB45309)
-                                                                    else -> Color(0xFF15803D)
-                                                                }
-                                                            )
-                                                        }
-                                                    }
-                                                }
-                                            }
-
-                                            // 5. Failure Mode
-                                            Text(
-                                                text = row.failureModesSummary,
-                                                fontSize = 11.sp,
-                                                color = if (row.count > 0) Color.Black else Color.Gray,
-                                                fontWeight = if (row.count > 0) FontWeight.SemiBold else FontWeight.Normal,
-                                                modifier = Modifier
-                                                    .width(220.dp)
-                                                    .padding(end = 8.dp),
-                                                maxLines = 2,
-                                                overflow = TextOverflow.Ellipsis
-                                            )
-                                        }
-                                        if (idx < reportRows.size - 1) {
-                                            HorizontalDivider(color = Color(0xFFF1F5F9), thickness = 1.dp)
-                                        }
-                                    }
-
-                                    // Baris TOTAL AKUMULASI (Footer Scrollable Pane)
-                                    HorizontalDivider(color = Color(0xFFCBD5E1), thickness = 2.dp)
-                                    Row(
-                                        modifier = Modifier
-                                            .height(48.dp)
-                                            .background(Color(0xFF0F172A))
-                                            .padding(horizontal = 8.dp),
-                                        verticalAlignment = Alignment.CenterVertically
-                                    ) {
-                                        // 1. Total RPN
+                                        // 1. Risk Priority Number (RPN)
                                         Box(modifier = Modifier.width(160.dp), contentAlignment = Alignment.Center) {
+                                            val rpnBg = when {
+                                                row.totalRpn >= 100 -> Color(0xFFFEE2E2)
+                                                row.totalRpn >= 50 -> Color(0xFFFEF3C7)
+                                                row.totalRpn > 0 -> BrandGreenLight
+                                                else -> Color(0xFFF1F5F9)
+                                            }
+                                            val rpnTextColor = when {
+                                                row.totalRpn >= 100 -> Color(0xFFDC2626)
+                                                row.totalRpn >= 50 -> Color(0xFFD97706)
+                                                row.totalRpn > 0 -> BrandGreen
+                                                else -> Color(0xFF64748B)
+                                            }
                                             Surface(
-                                                color = if (sumAllRpn >= 100) Color(0xFFDC2626) else BrandGreen,
-                                                shape = RoundedCornerShape(6.dp)
+                                                color = rpnBg,
+                                                shape = RoundedCornerShape(6.dp),
+                                                border = BorderStroke(1.dp, rpnTextColor.copy(alpha = 0.3f))
                                             ) {
                                                 Text(
-                                                    text = sumAllRpn.toString(),
+                                                    text = row.totalRpn.toString(),
                                                     fontSize = 13.sp,
                                                     fontWeight = FontWeight.Bold,
-                                                    color = Color.White,
-                                                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)
+                                                    color = rpnTextColor,
+                                                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp)
                                                 )
                                             }
                                         }
 
-                                        // 2. Total Jml Temuan
+                                        // 2. Jml Temuan
                                         Box(modifier = Modifier.width(95.dp), contentAlignment = Alignment.Center) {
-                                            Text("${sumAllCount}x", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                                            Surface(
+                                                color = if (row.count > 0) Color(0xFFE2E8F0) else Color(0xFFF8FAFC),
+                                                shape = RoundedCornerShape(6.dp)
+                                            ) {
+                                                Text(
+                                                    text = "${row.count}x",
+                                                    fontSize = 11.sp,
+                                                    fontWeight = FontWeight.Bold,
+                                                    color = if (row.count > 0) Color.Black else Color.Gray,
+                                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
+                                                )
+                                            }
                                         }
 
-                                        // 3. Total Status Open & Done
+                                        // 3. Status (Open / Done)
                                         Box(modifier = Modifier.width(175.dp), contentAlignment = Alignment.Center) {
-                                            Row(
-                                                horizontalArrangement = Arrangement.spacedBy(6.dp),
-                                                verticalAlignment = Alignment.CenterVertically
-                                            ) {
-                                                Surface(
-                                                    color = Color(0xFFEA580C),
-                                                    shape = RoundedCornerShape(4.dp)
+                                            if (row.count == 0) {
+                                                Text("-", fontSize = 11.sp, color = Color.LightGray, fontWeight = FontWeight.Bold)
+                                            } else {
+                                                Row(
+                                                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                                    verticalAlignment = Alignment.CenterVertically
                                                 ) {
-                                                    Text(
-                                                        text = "$sumAllOpen Open",
-                                                        fontSize = 10.5.sp,
-                                                        fontWeight = FontWeight.Bold,
-                                                        color = Color.White,
-                                                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
-                                                    )
-                                                }
-                                                Surface(
-                                                    color = Color(0xFF16A34A),
-                                                    shape = RoundedCornerShape(4.dp)
-                                                ) {
-                                                    Text(
-                                                        text = "$sumAllDone Done",
-                                                        fontSize = 10.5.sp,
-                                                        fontWeight = FontWeight.Bold,
-                                                        color = Color.White,
-                                                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
-                                                    )
+                                                    // Open badge
+                                                    Surface(
+                                                        color = if (row.openCount > 0) Color(0xFFFFF7ED) else Color(0xFFF8FAFC),
+                                                        shape = RoundedCornerShape(6.dp),
+                                                        border = BorderStroke(1.dp, if (row.openCount > 0) Color(0xFFFDBA74) else Color(0xFFE2E8F0))
+                                                    ) {
+                                                        Row(
+                                                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 3.dp),
+                                                            verticalAlignment = Alignment.CenterVertically,
+                                                            horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                                        ) {
+                                                            Box(
+                                                                modifier = Modifier
+                                                                    .size(6.dp)
+                                                                    .clip(CircleShape)
+                                                                    .background(if (row.openCount > 0) Color(0xFFEA580C) else Color(0xFF94A3B8))
+                                                            )
+                                                            Text(
+                                                                text = "${row.openCount} Open",
+                                                                fontSize = 10.5.sp,
+                                                                fontWeight = FontWeight.Bold,
+                                                                color = if (row.openCount > 0) Color(0xFFC2410C) else Color(0xFF64748B)
+                                                            )
+                                                        }
+                                                    }
+
+                                                    // Done badge
+                                                    Surface(
+                                                        color = if (row.doneCount > 0) Color(0xFFF0FDF4) else Color(0xFFF8FAFC),
+                                                        shape = RoundedCornerShape(6.dp),
+                                                        border = BorderStroke(1.dp, if (row.doneCount > 0) Color(0xFF86EFAC) else Color(0xFFE2E8F0))
+                                                    ) {
+                                                        Row(
+                                                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 3.dp),
+                                                            verticalAlignment = Alignment.CenterVertically,
+                                                            horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                                        ) {
+                                                            Box(
+                                                                modifier = Modifier
+                                                                    .size(6.dp)
+                                                                    .clip(CircleShape)
+                                                                    .background(if (row.doneCount > 0) Color(0xFF16A34A) else Color(0xFF94A3B8))
+                                                            )
+                                                            Text(
+                                                                text = "${row.doneCount} Done",
+                                                                fontSize = 10.5.sp,
+                                                                fontWeight = FontWeight.Bold,
+                                                                color = if (row.doneCount > 0) Color(0xFF15803D) else Color(0xFF64748B)
+                                                            )
+                                                        }
+                                                    }
                                                 }
                                             }
                                         }
 
-                                        // 4. Total Lead Time (Tampilkan max open lead time jika ada Open, atau rata-rata)
+                                        // 4. Lead Time (Hari)
                                         Box(modifier = Modifier.width(120.dp), contentAlignment = Alignment.Center) {
-                                            if (sumAllCount == 0) {
-                                                Text("-", fontSize = 11.sp, color = Color.White)
+                                            if (row.count == 0) {
+                                                Text("-", fontSize = 11.sp, color = Color.LightGray, fontWeight = FontWeight.Bold)
                                             } else {
-                                                val footerLeadText = if (maxOverallOpenLead != null) {
-                                                    "$maxOverallOpenLead hari (Max)"
-                                                } else {
-                                                    val formattedTotalAvg = String.format(java.util.Locale.US, "%.1f", totalOverallAvgLead).removeSuffix(".0")
-                                                    "$formattedTotalAvg hari"
-                                                }
+                                                val hasOpen = row.longestOpenLeadDays != null
+                                                val leadDays = if (hasOpen) row.longestOpenLeadDays!! else (row.maxDoneLeadDays ?: 0L)
+                                                val leadDisplay = "$leadDays hari"
+                                                val isLongLead = leadDays >= 7L
+                                                val isMediumLead = leadDays in 3L..6L
                                                 Surface(
-                                                    color = Color.White.copy(alpha = 0.15f),
-                                                    shape = RoundedCornerShape(4.dp)
+                                                    color = when {
+                                                        !hasOpen -> Color(0xFFF1F5F9)
+                                                        isLongLead -> Color(0xFFFEE2E2)
+                                                        isMediumLead -> Color(0xFFFEF3C7)
+                                                        else -> Color(0xFFF0FDF4)
+                                                    },
+                                                    shape = RoundedCornerShape(6.dp),
+                                                    border = BorderStroke(
+                                                        1.dp,
+                                                        when {
+                                                            !hasOpen -> Color(0xFFCBD5E1)
+                                                            isLongLead -> Color(0xFFFCA5A5)
+                                                            isMediumLead -> Color(0xFFFCD34D)
+                                                            else -> Color(0xFF86EFAC)
+                                                        }
+                                                    )
                                                 ) {
                                                     Row(
-                                                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
                                                         verticalAlignment = Alignment.CenterVertically,
-                                                        horizontalArrangement = Arrangement.spacedBy(3.dp)
+                                                        horizontalArrangement = Arrangement.spacedBy(4.dp)
                                                     ) {
                                                         Icon(
-                                                            imageVector = Icons.Default.Schedule,
+                                                            imageVector = if (!hasOpen) Icons.Default.CheckCircle else Icons.Default.Schedule,
                                                             contentDescription = null,
-                                                            tint = Color.White,
-                                                            modifier = Modifier.size(11.dp)
+                                                            tint = when {
+                                                                !hasOpen -> Color(0xFF475569)
+                                                                isLongLead -> Color(0xFFDC2626)
+                                                                isMediumLead -> Color(0xFFD97706)
+                                                                else -> Color(0xFF15803D)
+                                                            },
+                                                            modifier = Modifier.size(12.dp)
                                                         )
                                                         Text(
-                                                            text = footerLeadText,
-                                                            fontSize = 10.5.sp,
+                                                            text = leadDisplay,
+                                                            fontSize = 11.sp,
                                                             fontWeight = FontWeight.Bold,
-                                                            color = Color.White
+                                                            color = when {
+                                                                !hasOpen -> Color(0xFF334155)
+                                                                isLongLead -> Color(0xFFDC2626)
+                                                                isMediumLead -> Color(0xFFB45309)
+                                                                else -> Color(0xFF15803D)
+                                                            }
                                                         )
                                                     }
                                                 }
                                             }
                                         }
 
-                                        // 5. Failure Mode label
+                                        // 5. Failure Mode
                                         Text(
-                                            text = "Semua Komponen",
+                                            text = row.failureModesSummary,
                                             fontSize = 11.sp,
-                                            fontWeight = FontWeight.Bold,
-                                            color = Color.White,
-                                            modifier = Modifier.width(220.dp)
+                                            color = if (row.count > 0) Color.Black else Color.Gray,
+                                            fontWeight = if (row.count > 0) FontWeight.SemiBold else FontWeight.Normal,
+                                            modifier = Modifier
+                                                .width(220.dp)
+                                                .padding(end = 8.dp),
+                                            maxLines = 2,
+                                            overflow = TextOverflow.Ellipsis
                                         )
                                     }
+                                    if (idx < reportRows.size - 1) {
+                                        HorizontalDivider(color = Color(0xFFF1F5F9), thickness = 1.dp)
+                                    }
+                                }
+
+                                // Baris TOTAL AKUMULASI (Footer Scrollable Pane)
+                                HorizontalDivider(color = Color(0xFFCBD5E1), thickness = 2.dp)
+                                Row(
+                                    modifier = Modifier
+                                        .height(48.dp)
+                                        .background(Color(0xFF0F172A))
+                                        .padding(horizontal = 8.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    // 1. Total RPN
+                                    Box(modifier = Modifier.width(160.dp), contentAlignment = Alignment.Center) {
+                                        Surface(
+                                            color = if (sumAllRpn >= 100) Color(0xFFDC2626) else BrandGreen,
+                                            shape = RoundedCornerShape(6.dp)
+                                        ) {
+                                            Text(
+                                                text = sumAllRpn.toString(),
+                                                fontSize = 13.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                color = Color.White,
+                                                modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)
+                                            )
+                                        }
+                                    }
+
+                                    // 2. Total Jml Temuan
+                                    Box(modifier = Modifier.width(95.dp), contentAlignment = Alignment.Center) {
+                                        Text("${sumAllCount}x", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                                    }
+
+                                    // 3. Total Status Open & Done
+                                    Box(modifier = Modifier.width(175.dp), contentAlignment = Alignment.Center) {
+                                        Row(
+                                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Surface(
+                                                color = Color(0xFFEA580C),
+                                                shape = RoundedCornerShape(4.dp)
+                                            ) {
+                                                Text(
+                                                    text = "$sumAllOpen Open",
+                                                    fontSize = 10.5.sp,
+                                                    fontWeight = FontWeight.Bold,
+                                                    color = Color.White,
+                                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                                )
+                                            }
+                                            Surface(
+                                                color = Color(0xFF16A34A),
+                                                shape = RoundedCornerShape(4.dp)
+                                            ) {
+                                                Text(
+                                                    text = "$sumAllDone Done",
+                                                    fontSize = 10.5.sp,
+                                                    fontWeight = FontWeight.Bold,
+                                                    color = Color.White,
+                                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                                )
+                                            }
+                                        }
+                                    }
+
+                                    // 4. Total Lead Time (Tampilkan max open lead time jika ada Open, atau rata-rata)
+                                    Box(modifier = Modifier.width(120.dp), contentAlignment = Alignment.Center) {
+                                        if (sumAllCount == 0) {
+                                            Text("-", fontSize = 11.sp, color = Color.White)
+                                        } else {
+                                            val footerLeadText = if (maxOverallOpenLead != null) {
+                                                "$maxOverallOpenLead hari (Max)"
+                                            } else {
+                                                val formattedTotalAvg = String.format(java.util.Locale.US, "%.1f", totalOverallAvgLead).removeSuffix(".0")
+                                                "$formattedTotalAvg hari"
+                                            }
+                                            Surface(
+                                                color = Color.White.copy(alpha = 0.15f),
+                                                shape = RoundedCornerShape(4.dp)
+                                            ) {
+                                                Row(
+                                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                                                    verticalAlignment = Alignment.CenterVertically,
+                                                    horizontalArrangement = Arrangement.spacedBy(3.dp)
+                                                ) {
+                                                    Icon(
+                                                        imageVector = Icons.Default.Schedule,
+                                                        contentDescription = null,
+                                                        tint = Color.White,
+                                                        modifier = Modifier.size(11.dp)
+                                                    )
+                                                    Text(
+                                                        text = footerLeadText,
+                                                        fontSize = 10.5.sp,
+                                                        fontWeight = FontWeight.Bold,
+                                                        color = Color.White
+                                                    )
+                                                }
+                                            }
+                                        }
+                                    }
+
+                                    // 5. Failure Mode label
+                                    Text(
+                                        text = "Semua Komponen",
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = Color.White,
+                                        modifier = Modifier.width(220.dp)
+                                    )
                                 }
                             }
                         }
@@ -8918,7 +9231,7 @@ fun AbnormalityScreen(
             } else {
                 items(filteredReports) { r ->
                     val isOpen = r.status.equals("Open", ignoreCase = true)
-                    val endMillis = if (!isOpen && r.resolvedTimestamp > 0L) r.resolvedTimestamp else System.currentTimeMillis()
+                    val endMillis = if (!isOpen && r.resolvedTimestamp > 0L) r.resolvedTimestamp else currentTimeMillis
                     val leadTimeDays = maxOf(0L, (endMillis - r.timestamp) / (24L * 60 * 60 * 1000L))
                     val leadTimeText = if (leadTimeDays == 0L) "0 hari (Hari ini)" else "$leadTimeDays hari"
 
@@ -10172,19 +10485,41 @@ fun FlushingScreen(
                 // =========================================================================
                 // MENU REPORT FLUSHING
                 // =========================================================================
-                val now = System.currentTimeMillis()
-                val startOfToday = remember(now) { WibDateUtils.getStartOfDay(now) }
+                val now = currentTimeMillis
+                // Cut-off operasional: mulai jam 07:00 hari ini sampai jam 07:00 besok harinya
+                val (startOfFlushingToday, endOfFlushingToday) = remember(now) {
+                    val cal = WibDateUtils.getCalendar(now)
+                    val hour = cal.get(Calendar.HOUR_OF_DAY)
+                    if (hour < 7) {
+                        cal.add(Calendar.DAY_OF_YEAR, -1)
+                    }
+                    cal.set(Calendar.HOUR_OF_DAY, 7)
+                    cal.set(Calendar.MINUTE, 0)
+                    cal.set(Calendar.SECOND, 0)
+                    cal.set(Calendar.MILLISECOND, 0)
+                    val start = cal.timeInMillis
+                    val end = start + 24L * 3600 * 1000L
+                    Pair(start, end)
+                }
                 val weekThreshold = remember(now) { now - 7L * 24 * 60 * 60 * 1000L }
                 val monthThreshold = remember(now) { now - 30L * 24 * 60 * 60 * 1000L }
 
                 val periodLogs = flushingLogs.filter { log ->
                     when (filterPeriod) {
-                        "Hari ini" -> log.timestamp >= startOfToday
+                        "Hari ini" -> log.timestamp in startOfFlushingToday until endOfFlushingToday
                         "Seminggu" -> log.timestamp >= weekThreshold
                         "Sebulan" -> log.timestamp >= monthThreshold
                         "Tanggal" -> log.timestamp in customStartDate..customEndDate
                         else -> true
                     }
+                }
+
+                val flushingPeriodLabel = when (filterPeriod) {
+                    "Hari ini" -> "Hari ini (${WibDateUtils.format("dd/MM", startOfFlushingToday)} 07:00 s/d ${WibDateUtils.format("dd/MM", endOfFlushingToday)} 07:00 WIB)"
+                    "Seminggu" -> "Seminggu Terakhir"
+                    "Sebulan" -> "Sebulan Terakhir"
+                    "Tanggal" -> "${WibDateUtils.format("dd/MM/yyyy", customStartDate)} s/d ${WibDateUtils.format("dd/MM/yyyy", customEndDate)}"
+                    else -> filterPeriod
                 }
 
                 val filteredLogs = periodLogs.filter { log ->
@@ -10251,7 +10586,7 @@ fun FlushingScreen(
                                             fontWeight = FontWeight.Bold
                                         )
                                         Text(
-                                            text = "Periode: $filterPeriod",
+                                            text = "Periode: $flushingPeriodLabel",
                                             color = Color(0xFF94A3B8),
                                             fontSize = 11.sp
                                         )

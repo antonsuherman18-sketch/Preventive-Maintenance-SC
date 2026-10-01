@@ -98,7 +98,7 @@ object ExcelExporter {
         }
         sb.append("Total Data:,").append(filteredLogs.size).append("\n\n")
 
-        sb.append("ID,Timestamp,Waktu,Machine/Unit,Axial 1 (mm/s),Axial 2 (mm/s),Horizontal (mm/s),Vertikal (mm/s),Bearing Temp (°C),Motor Temp (°C),Alarm State,Greasing,Leakage,Sound State,Catatan / Parameter\n")
+        sb.append("ID,Timestamp,Waktu,Machine/Unit,Axial 1 (mm/s),Axial 2 (mm/s),Horizontal (mm/s),Vertikal (mm/s),Suhu Bearing 1 (°C),Suhu Bearing 2 (°C),Suhu Motor (°C),Alarm State,Greasing,Leakage,Sound State,Catatan / Parameter\n")
 
         filteredLogs.sortedByDescending { it.timestamp }.forEach { log ->
             val dateStr = dateFormat.format(Date(log.timestamp))
@@ -120,6 +120,7 @@ object ExcelExporter {
                 .append(String.format(Locale.US, "%.2f", log.motorBearingVibration)).append(",")
                 .append(String.format(Locale.US, "%.2f", log.gearboxBearingVibration)).append(",")
                 .append(String.format(Locale.US, "%.1f", log.bearingTemp)).append(",")
+                .append(String.format(Locale.US, "%.1f", log.effectiveBearingTemp2)).append(",")
                 .append(String.format(Locale.US, "%.1f", log.motorTemp)).append(",")
                 .append(escapeCsv(log.alarmState)).append(",")
                 .append(escapeCsv(greasedStr)).append(",")
@@ -391,7 +392,7 @@ object ExcelExporter {
 
         // 1. Monitoring SC
         sb.append("=== 1. MONITORING & TREND ANALYSIS CENTRIFUGE ===\n")
-        sb.append("ID,Timestamp,Waktu,Machine/Unit,Axial 1 (mm/s),Axial 2 (mm/s),Horizontal (mm/s),Vertikal (mm/s),Bearing Temp,Motor Temp,Alarm State,Greasing,Leakage,Sound State,Catatan\n")
+        sb.append("ID,Timestamp,Waktu,Machine/Unit,Axial 1 (mm/s),Axial 2 (mm/s),Horizontal (mm/s),Vertikal (mm/s),Suhu Bearing 1 (°C),Suhu Bearing 2 (°C),Suhu Motor (°C),Alarm State,Greasing,Leakage,Sound State,Catatan\n")
         filteredVib.sortedByDescending { it.timestamp }.forEach { log ->
             val dateStr = dateFormat.format(Date(log.timestamp))
             val machineName = extractMachineUnit(log.comments)
@@ -411,6 +412,7 @@ object ExcelExporter {
                 .append(String.format(Locale.US, "%.2f", log.motorBearingVibration)).append(",")
                 .append(String.format(Locale.US, "%.2f", log.gearboxBearingVibration)).append(",")
                 .append(String.format(Locale.US, "%.1f", log.bearingTemp)).append(",")
+                .append(String.format(Locale.US, "%.1f", log.effectiveBearingTemp2)).append(",")
                 .append(String.format(Locale.US, "%.1f", log.motorTemp)).append(",")
                 .append(escapeCsv(log.alarmState)).append(",")
                 .append(escapeCsv(greasedStr)).append(",")
