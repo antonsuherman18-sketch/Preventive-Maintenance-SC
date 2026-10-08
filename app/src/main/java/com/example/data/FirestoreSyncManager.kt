@@ -1,9 +1,12 @@
 package com.example.data
 
+import android.content.Context
 import android.util.Log
+import com.example.util.ImageCompressor
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.ListenerRegistration
 import com.google.firebase.firestore.SetOptions
+import java.io.File
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.first
@@ -16,6 +19,7 @@ import kotlinx.coroutines.tasks.await
  */
 class FirestoreSyncManager(
     private val db: AppDatabase,
+    private val context: Context? = AppDatabase.appContext,
     private val scope: CoroutineScope = CoroutineScope(Dispatchers.IO)
 ) {
     private val firestore: FirebaseFirestore by lazy {
@@ -45,6 +49,22 @@ class FirestoreSyncManager(
     fun startRealtimeSync() {
         if (isListening) return
         isListening = true
+
+        // Sinkronkan foto lokal yang ada ke Cloud Firestore dalam bentuk Base64 agar dapat dilihat HP lain
+        scope.launch {
+            try {
+                val localReports = db.abnormalityDao().getAllReportsList()
+                for (r in localReports) {
+                    val hasPhoto = !r.photoUri.isNullOrBlank() && File(r.photoUri).exists()
+                    val hasRepairPhoto = !r.repairPhotoUri.isNullOrBlank() && File(r.repairPhotoUri).exists()
+                    if (hasPhoto || hasRepairPhoto) {
+                        pushAbnormality(r)
+                    }
+                }
+            } catch (e: Exception) {
+                Log.e("FirestoreSync", "Initial background photo sync error", e)
+            }
+        }
 
         try {
             // 1. CILT Checks Listener
@@ -167,6 +187,41 @@ class FirestoreSyncManager(
                                     val occ = doc.getLong("occurrenceScore")?.toInt() ?: 1
                                     val det = doc.getLong("detectionScore")?.toInt() ?: 1
                                     val rpn = doc.getLong("rpn")?.toInt() ?: (sev * occ * det)
+                                    val remotePhotoBase64 = doc.getString("photoBase64")
+                                    val remoteRepairPhotoBase64 = doc.getString("repairPhotoBase64")
+                                    val remotePhotoUri = doc.getString("photoUri")
+                                    val remoteRepairPhotoUri = doc.getString("repairPhotoUri")
+
+                                    val safeTitle = title.take(20).replace(Regex("[^a-zA-Z0-9]"), "_")
+
+                                    // Selesaikan path foto temuan abnormality untuk HP ini
+                                    val resolvedPhotoUri: String? = when {
+                                        // 1. HP pengambil foto asli di mana file lokal masih ada
+                                        !remotePhotoUri.isNullOrBlank() && File(remotePhotoUri).let { it.exists() && it.isFile && it.length() > 0 } -> remotePhotoUri
+                                        // 2. Sudah diunduh sebelumnya di HP ini dan file masih utuh
+                                        existing?.photoUri != null && File(existing.photoUri).let { it.exists() && it.isFile && it.length() > 0 } && remotePhotoBase64.isNullOrBlank() -> existing.photoUri
+                                        // 3. Tersedia data Base64 dari Cloud: simpan ke file lokal HP ini agar dapat dibuka/dilihat
+                                        !remotePhotoBase64.isNullOrBlank() -> {
+                                            ImageCompressor.saveBase64ToFile(context, remotePhotoBase64, "sync_${timestamp}_input_${safeTitle}.jpg") ?: remotePhotoUri ?: existing?.photoUri
+                                        }
+                                        // 4. Fallback
+                                        else -> remotePhotoUri ?: existing?.photoUri
+                                    }
+
+                                    // Selesaikan path foto tindakan perbaikan untuk HP ini
+                                    val resolvedRepairPhotoUri: String? = when {
+                                        // 1. HP pengambil foto perbaikan asli di mana file lokal masih ada
+                                        !remoteRepairPhotoUri.isNullOrBlank() && File(remoteRepairPhotoUri).let { it.exists() && it.isFile && it.length() > 0 } -> remoteRepairPhotoUri
+                                        // 2. Sudah diunduh sebelumnya di HP ini dan file masih utuh
+                                        existing?.repairPhotoUri != null && File(existing.repairPhotoUri).let { it.exists() && it.isFile && it.length() > 0 } && remoteRepairPhotoBase64.isNullOrBlank() -> existing.repairPhotoUri
+                                        // 3. Tersedia data Base64 dari Cloud: simpan ke file lokal HP ini agar dapat dibuka/dilihat
+                                        !remoteRepairPhotoBase64.isNullOrBlank() -> {
+                                            ImageCompressor.saveBase64ToFile(context, remoteRepairPhotoBase64, "sync_${timestamp}_repair_${safeTitle}.jpg") ?: remoteRepairPhotoUri ?: existing?.repairPhotoUri
+                                        }
+                                        // 4. Fallback
+                                        else -> remoteRepairPhotoUri ?: existing?.repairPhotoUri
+                                    }
+
                                     val item = AbnormalityReport(
                                         id = id,
                                         timestamp = timestamp,
@@ -177,12 +232,13 @@ class FirestoreSyncManager(
                                         occurrenceScore = occ,
                                         detectionScore = det,
                                         rpn = rpn,
-                                        photoUri = doc.getString("photoUri"),
+                                        photoUri = resolvedPhotoUri,
                                         picName = doc.getString("picName") ?: "Anton Suherman",
                                         tagType = doc.getString("tagType") ?: "",
                                         status = doc.getString("status") ?: "Open",
                                         mechanicName = doc.getString("mechanicName") ?: "",
                                         repairNotes = doc.getString("repairNotes") ?: "",
+                                        repairPhotoUri = resolvedRepairPhotoUri,
                                         resolvedTimestamp = doc.getLong("resolvedTimestamp") ?: 0L,
                                         isSynced = true
                                     )
@@ -458,7 +514,20 @@ class FirestoreSyncManager(
             "resolvedTimestamp" to report.resolvedTimestamp,
             "lastUpdated" to System.currentTimeMillis()
         )
-        report.photoUri?.let { data["photoUri"] = it }
+        report.photoUri?.let { path ->
+            data["photoUri"] = path
+            val base64 = ImageCompressor.fileToBase64(path)
+            if (base64 != null) {
+                data["photoBase64"] = base64
+            }
+        }
+        report.repairPhotoUri?.let { path ->
+            data["repairPhotoUri"] = path
+            val base64 = ImageCompressor.fileToBase64(path)
+            if (base64 != null) {
+                data["repairPhotoBase64"] = base64
+            }
+        }
         firestore.collection(ABNORMALITY_COLLECTION).document(docId).set(data, SetOptions.merge()).await()
     }
 

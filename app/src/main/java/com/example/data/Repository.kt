@@ -12,6 +12,7 @@ import kotlinx.coroutines.launch
 
 class Repository(
     private val db: AppDatabase,
+    private val context: Context? = null,
     private val scope: CoroutineScope = CoroutineScope(Dispatchers.IO)
 ) {
     val ciltDao = db.ciltDao()
@@ -21,7 +22,7 @@ class Repository(
     val vibrationDao = db.vibrationDao()
     val flushingDao = db.flushingDao()
 
-    val firestoreSyncManager = FirestoreSyncManager(db, scope)
+    val firestoreSyncManager = FirestoreSyncManager(db, context ?: AppDatabase.appContext, scope)
 
     // Flow definitions for UI observation
     val allCiltChecks: Flow<List<CiltCheck>> = ciltDao.getAllChecks()

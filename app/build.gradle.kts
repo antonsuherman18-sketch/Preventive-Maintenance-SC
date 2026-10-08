@@ -17,8 +17,8 @@ android {
     applicationId = "com.aistudio.centrifugepm.ydhwb"
     minSdk = 24
     targetSdk = 36
-    versionCode = 36
-    versionName = "36.0"
+    versionCode = 42
+    versionName = "42.0"
 
     testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
   }

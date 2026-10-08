@@ -54,7 +54,14 @@ import android.graphics.Paint
 import android.graphics.Typeface
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.data.*
+import com.example.util.ImageCompressor
 import com.example.util.WibDateUtils
+import android.net.Uri
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.activity.result.PickVisualMediaRequest
+import coil.compose.AsyncImage
+import java.io.File
 import java.text.SimpleDateFormat
 import java.util.*
 
@@ -6639,6 +6646,7 @@ class FailureModeRowItem(
     var occurrence by mutableStateOf(initialOccurrence)
     var detection by mutableStateOf(initialDetection)
     var isCustomMode by mutableStateOf(isCustomInput || isManualFailureMode)
+    var photoUri by mutableStateOf<String?>(null)
 }
 
 @Composable
@@ -7340,13 +7348,61 @@ fun AbnormalityScreen(
     var dialogSelectedStatus by remember { mutableStateOf("Done") }
     var dialogMechanicName by remember { mutableStateOf("") }
     var dialogRepairNotes by remember { mutableStateOf("") }
+    var dialogRepairPhotoUri by remember { mutableStateOf<String?>(null) }
+    var isRepairPhotoTarget by remember { mutableStateOf(false) }
 
     // State untuk sub-menu "Report"
     var selectedPeriod by remember { mutableStateOf("Hari Ini") } // "Hari Ini", "Seminggu", "Sebulan", "Tanggal"
     var selectedReportMachine by remember { mutableStateOf("Semua Mesin") }
     var reportMachineDropdownExpanded by remember { mutableStateOf(false) }
 
+    // State untuk Fitur Insert Foto & View Foto Abnormality
+    var targetItemForPhoto by remember { mutableStateOf<FailureModeRowItem?>(null) }
+    var showPhotoSourceDialog by remember { mutableStateOf(false) }
+    var viewingPhotoUri by remember { mutableStateOf<String?>(null) }
+    var cameraTempUri by remember { mutableStateOf<Uri?>(null) }
+
     val context = LocalContext.current
+
+    val pickPhotoLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.PickVisualMedia()
+    ) { uri: Uri? ->
+        if (uri != null) {
+            val result = ImageCompressor.compressImage(context, uri)
+            if (result != null) {
+                if (isRepairPhotoTarget) {
+                    dialogRepairPhotoUri = result.filePath
+                    isRepairPhotoTarget = false
+                    Toast.makeText(context, "Foto perbaikan berhasil diunggah (${result.sizeKb} KB, maks 50 KB)", Toast.LENGTH_SHORT).show()
+                } else if (targetItemForPhoto != null) {
+                    targetItemForPhoto?.photoUri = result.filePath
+                    Toast.makeText(context, "Foto berhasil diunggah (${result.sizeKb} KB, maks 50 KB)", Toast.LENGTH_SHORT).show()
+                }
+            } else {
+                Toast.makeText(context, "Gagal mengompres foto", Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
+
+    val takePhotoLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.TakePicture()
+    ) { success ->
+        if (success && cameraTempUri != null) {
+            val result = ImageCompressor.compressImage(context, cameraTempUri!!)
+            if (result != null) {
+                if (isRepairPhotoTarget) {
+                    dialogRepairPhotoUri = result.filePath
+                    isRepairPhotoTarget = false
+                    Toast.makeText(context, "Foto kamera perbaikan berhasil diunggah (${result.sizeKb} KB, maks 50 KB)", Toast.LENGTH_SHORT).show()
+                } else if (targetItemForPhoto != null) {
+                    targetItemForPhoto?.photoUri = result.filePath
+                    Toast.makeText(context, "Foto kamera berhasil diunggah (${result.sizeKb} KB, maks 50 KB)", Toast.LENGTH_SHORT).show()
+                }
+            } else {
+                Toast.makeText(context, "Gagal mengompres foto kamera", Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
     val now = currentTimeMillis
     val startOfToday = remember(currentTimeMillis / (24 * 3600 * 1000L)) { WibDateUtils.getStartOfDay(currentTimeMillis) }
     val endOfToday = remember(startOfToday) { startOfToday + 24 * 3600 * 1000L - 1L }
@@ -7927,6 +7983,7 @@ fun AbnormalityScreen(
                                 }
                             }
                             Text("Risk Priority Number (RPN)", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color.White, modifier = Modifier.width(170.dp), textAlign = TextAlign.Center)
+                            Text("Insert Foto", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color.White, modifier = Modifier.width(150.dp), textAlign = TextAlign.Center)
                         }
                     }
                 }
@@ -8142,6 +8199,75 @@ fun AbnormalityScreen(
                                             )
                                         }
                                     }
+
+                                    // Kolom Insert Foto setelah RPN
+                                    Box(modifier = Modifier.width(150.dp).padding(horizontal = 4.dp), contentAlignment = Alignment.Center) {
+                                        if (item.photoUri != null) {
+                                            Row(
+                                                verticalAlignment = Alignment.CenterVertically,
+                                                horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                            ) {
+                                                // Thumbnail yang bisa diklik untuk View Foto
+                                                Box(
+                                                    modifier = Modifier
+                                                        .size(36.dp)
+                                                        .clip(RoundedCornerShape(6.dp))
+                                                        .border(1.dp, BrandGreen, RoundedCornerShape(6.dp))
+                                                        .clickable { viewingPhotoUri = item.photoUri }
+                                                ) {
+                                                    AsyncImage(
+                                                        model = ImageCompressor.getPhotoModel(item.photoUri),
+                                                        contentDescription = "View Foto Abnormality",
+                                                        contentScale = ContentScale.Crop,
+                                                        modifier = Modifier.fillMaxSize()
+                                                    )
+                                                }
+                                                // Tombol Upload Ulang (Ganti Foto)
+                                                OutlinedButton(
+                                                    onClick = {
+                                                        targetItemForPhoto = item
+                                                        showPhotoSourceDialog = true
+                                                    },
+                                                    contentPadding = PaddingValues(horizontal = 6.dp, vertical = 2.dp),
+                                                    shape = RoundedCornerShape(6.dp),
+                                                    border = BorderStroke(1.dp, Color(0xFF0284C7)),
+                                                    colors = ButtonDefaults.outlinedButtonColors(containerColor = Color(0xFFF0F9FF)),
+                                                    modifier = Modifier.height(30.dp)
+                                                ) {
+                                                    Icon(
+                                                        imageVector = Icons.Default.Refresh,
+                                                        contentDescription = "Upload Ulang Foto",
+                                                        tint = Color(0xFF0284C7),
+                                                        modifier = Modifier.size(13.dp)
+                                                    )
+                                                    Spacer(modifier = Modifier.width(3.dp))
+                                                    Text("Ganti", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = Color(0xFF0284C7))
+                                                }
+                                            }
+                                        } else {
+                                            // Tombol Insert Foto Awal
+                                            OutlinedButton(
+                                                onClick = {
+                                                    targetItemForPhoto = item
+                                                    showPhotoSourceDialog = true
+                                                },
+                                                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
+                                                shape = RoundedCornerShape(6.dp),
+                                                border = BorderStroke(1.dp, Color(0xFFCBD5E1)),
+                                                colors = ButtonDefaults.outlinedButtonColors(containerColor = Color(0xFFF8FAFC)),
+                                                modifier = Modifier.height(32.dp)
+                                            ) {
+                                                Icon(
+                                                    imageVector = Icons.Default.AddAPhoto,
+                                                    contentDescription = "Insert Foto",
+                                                    tint = SlateGrey,
+                                                    modifier = Modifier.size(14.dp)
+                                                )
+                                                Spacer(modifier = Modifier.width(4.dp))
+                                                Text("Insert Foto", fontSize = 10.5.sp, fontWeight = FontWeight.Medium, color = SlateGrey)
+                                            }
+                                        }
+                                    }
                                 }
                                 if (idx < failureModeItems.size - 1) {
                                     HorizontalDivider(color = Color(0xFFF1F5F9), thickness = 1.dp)
@@ -8174,7 +8300,7 @@ fun AbnormalityScreen(
                                 occurrenceScore = item.occurrence,
                                 detectionScore = item.detection,
                                 rpn = calculatedRpn,
-                                photoUri = null,
+                                photoUri = item.photoUri,
                                 picName = "$selectedOperator ($selectedShift)",
                                 tagType = "",
                                 status = "Open",
@@ -8201,6 +8327,7 @@ fun AbnormalityScreen(
                         it.severity = 0
                         it.occurrence = 0
                         it.detection = 0
+                        it.photoUri = null
                     }
                 },
                 colors = ButtonDefaults.buttonColors(containerColor = BrandRed),
@@ -8340,25 +8467,114 @@ fun AbnormalityScreen(
                         }
                     }
 
-                    // Display mock/simulated photo if attached
+                    // Tampilkan foto jika ada foto yang di-upload
                     if (r.photoUri != null) {
                         Spacer(modifier = Modifier.height(8.dp))
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .background(SoftBg, RoundedCornerShape(4.dp))
-                                .padding(6.dp),
+                                .background(Color(0xFFF8FAFC), RoundedCornerShape(8.dp))
+                                .border(1.dp, Color(0xFFE2E8F0), RoundedCornerShape(8.dp))
+                                .padding(8.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Icon(imageVector = Icons.Default.Image, contentDescription = "Attached Image", tint = BrandGreen, modifier = Modifier.size(16.dp))
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Text(
-                                text = "Foto Kondisi: ${r.photoUri} (Disimpan offline)",
-                                fontSize = 11.sp,
-                                color = Color.Black,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis
-                            )
+                            Box(
+                                modifier = Modifier
+                                    .size(44.dp)
+                                    .clip(RoundedCornerShape(6.dp))
+                                    .border(1.dp, BrandGreen, RoundedCornerShape(6.dp))
+                                    .clickable { viewingPhotoUri = r.photoUri }
+                            ) {
+                                AsyncImage(
+                                    model = ImageCompressor.getPhotoModel(r.photoUri),
+                                    contentDescription = "Foto Temuan",
+                                    contentScale = ContentScale.Crop,
+                                    modifier = Modifier.fillMaxSize()
+                                )
+                            }
+                            Spacer(modifier = Modifier.width(10.dp))
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = "Foto Temuan Abnormality",
+                                    fontSize = 11.5.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = SlateGrey
+                                )
+                                Text(
+                                    text = "Ukuran: ${ImageCompressor.getFileSizeKb(r.photoUri)} (Maks 50 KB)",
+                                    fontSize = 10.sp,
+                                    color = Color(0xFF64748B)
+                                )
+                            }
+                            TextButton(
+                                onClick = { viewingPhotoUri = r.photoUri },
+                                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp)
+                            ) {
+                                Icon(Icons.Default.Visibility, contentDescription = null, tint = BrandGreen, modifier = Modifier.size(14.dp))
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text("Lihat", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = BrandGreen)
+                            }
+                        }
+                    }
+
+                    // Tampilkan foto hasil tindakan perbaikan jika ada
+                    if (r.repairPhotoUri != null) {
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .background(Color(0xFFF0FDF4), RoundedCornerShape(8.dp))
+                                .border(1.dp, Color(0xFF86EFAC), RoundedCornerShape(8.dp))
+                                .padding(8.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(44.dp)
+                                    .clip(RoundedCornerShape(6.dp))
+                                    .border(1.dp, Color(0xFF16A34A), RoundedCornerShape(6.dp))
+                                    .clickable { viewingPhotoUri = r.repairPhotoUri }
+                            ) {
+                                AsyncImage(
+                                    model = ImageCompressor.getPhotoModel(r.repairPhotoUri),
+                                    contentDescription = "Foto Hasil Tindakan Perbaikan",
+                                    contentScale = ContentScale.Crop,
+                                    modifier = Modifier.fillMaxSize()
+                                )
+                            }
+                            Spacer(modifier = Modifier.width(10.dp))
+                            Column(modifier = Modifier.weight(1f)) {
+                                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                                    Icon(
+                                        imageVector = Icons.Default.CheckCircle,
+                                        contentDescription = null,
+                                        tint = Color(0xFF16A34A),
+                                        modifier = Modifier.size(13.dp)
+                                    )
+                                    Text(
+                                        text = "Foto Hasil Tindakan Perbaikan",
+                                        fontSize = 11.5.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = Color(0xFF15803D)
+                                    )
+                                }
+                                Text(
+                                    text = "Mekanik: ${r.mechanicName.ifBlank { "-" }} • ${ImageCompressor.getFileSizeKb(r.repairPhotoUri)} (Maks 50 KB)",
+                                    fontSize = 10.sp,
+                                    color = Color(0xFF166534)
+                                )
+                            }
+                            FilledTonalButton(
+                                onClick = { viewingPhotoUri = r.repairPhotoUri },
+                                shape = RoundedCornerShape(6.dp),
+                                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
+                                modifier = Modifier.height(30.dp),
+                                colors = ButtonDefaults.filledTonalButtonColors(containerColor = Color(0xFFDCFCE7))
+                            ) {
+                                Icon(Icons.Default.Visibility, contentDescription = null, tint = Color(0xFF15803D), modifier = Modifier.size(14.dp))
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text("Lihat", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color(0xFF15803D))
+                            }
                         }
                     }
                 }
@@ -9356,6 +9572,118 @@ fun AbnormalityScreen(
 
                             Spacer(modifier = Modifier.height(8.dp))
                             Text(r.description, fontSize = 11.5.sp, color = Color.Black)
+
+                            // Tampilkan foto jika ada foto yang di-upload
+                            if (r.photoUri != null) {
+                                Spacer(modifier = Modifier.height(8.dp))
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .background(Color(0xFFF8FAFC), RoundedCornerShape(8.dp))
+                                        .border(1.dp, Color(0xFFE2E8F0), RoundedCornerShape(8.dp))
+                                        .padding(8.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Box(
+                                        modifier = Modifier
+                                            .size(44.dp)
+                                            .clip(RoundedCornerShape(6.dp))
+                                            .border(1.dp, BrandGreen, RoundedCornerShape(6.dp))
+                                            .clickable { viewingPhotoUri = r.photoUri }
+                                    ) {
+                                        AsyncImage(
+                                            model = ImageCompressor.getPhotoModel(r.photoUri),
+                                            contentDescription = "Foto Temuan",
+                                            contentScale = ContentScale.Crop,
+                                            modifier = Modifier.fillMaxSize()
+                                        )
+                                    }
+                                    Spacer(modifier = Modifier.width(10.dp))
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Text(
+                                            text = "Foto Temuan Abnormality",
+                                            fontSize = 11.5.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = SlateGrey
+                                        )
+                                        Text(
+                                            text = "Ukuran: ${ImageCompressor.getFileSizeKb(r.photoUri)} (Maks 50 KB)",
+                                            fontSize = 10.sp,
+                                            color = Color(0xFF64748B)
+                                        )
+                                    }
+                                    TextButton(
+                                        onClick = { viewingPhotoUri = r.photoUri },
+                                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp)
+                                    ) {
+                                        Icon(Icons.Default.Visibility, contentDescription = null, tint = BrandGreen, modifier = Modifier.size(14.dp))
+                                        Spacer(modifier = Modifier.width(4.dp))
+                                        Text("Lihat", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = BrandGreen)
+                                    }
+                                }
+                            }
+
+                            // Tampilkan foto hasil tindakan perbaikan jika ada
+                            if (r.repairPhotoUri != null) {
+                                Spacer(modifier = Modifier.height(8.dp))
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .background(Color(0xFFF0FDF4), RoundedCornerShape(8.dp))
+                                        .border(1.dp, Color(0xFF86EFAC), RoundedCornerShape(8.dp))
+                                        .padding(8.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Box(
+                                        modifier = Modifier
+                                            .size(44.dp)
+                                            .clip(RoundedCornerShape(6.dp))
+                                            .border(1.dp, Color(0xFF16A34A), RoundedCornerShape(6.dp))
+                                            .clickable { viewingPhotoUri = r.repairPhotoUri }
+                                    ) {
+                                        AsyncImage(
+                                            model = ImageCompressor.getPhotoModel(r.repairPhotoUri),
+                                            contentDescription = "Foto Hasil Tindakan Perbaikan",
+                                            contentScale = ContentScale.Crop,
+                                            modifier = Modifier.fillMaxSize()
+                                        )
+                                    }
+                                    Spacer(modifier = Modifier.width(10.dp))
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                                            Icon(
+                                                imageVector = Icons.Default.CheckCircle,
+                                                contentDescription = null,
+                                                tint = Color(0xFF16A34A),
+                                                modifier = Modifier.size(13.dp)
+                                            )
+                                            Text(
+                                                text = "Foto Hasil Tindakan Perbaikan",
+                                                fontSize = 11.5.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                color = Color(0xFF15803D)
+                                            )
+                                        }
+                                        Text(
+                                            text = "Mekanik: ${r.mechanicName.ifBlank { "-" }} • ${ImageCompressor.getFileSizeKb(r.repairPhotoUri)} (Maks 50 KB)",
+                                            fontSize = 10.sp,
+                                            color = Color(0xFF166534)
+                                        )
+                                    }
+                                    FilledTonalButton(
+                                        onClick = { viewingPhotoUri = r.repairPhotoUri },
+                                        shape = RoundedCornerShape(6.dp),
+                                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
+                                        modifier = Modifier.height(30.dp),
+                                        colors = ButtonDefaults.filledTonalButtonColors(containerColor = Color(0xFFDCFCE7))
+                                    ) {
+                                        Icon(Icons.Default.Visibility, contentDescription = null, tint = Color(0xFF15803D), modifier = Modifier.size(14.dp))
+                                        Spacer(modifier = Modifier.width(4.dp))
+                                        Text("Lihat", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color(0xFF15803D))
+                                    }
+                                }
+                            }
+
                             Spacer(modifier = Modifier.height(8.dp))
 
                             Row(
@@ -9379,6 +9707,7 @@ fun AbnormalityScreen(
                                                 dialogSelectedStatus = "Done"
                                                 dialogMechanicName = r.mechanicName
                                                 dialogRepairNotes = r.repairNotes
+                                                dialogRepairPhotoUri = r.repairPhotoUri
                                                 reportToUpdateStatus = r
                                             },
                                             colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF16A34A)),
@@ -9401,6 +9730,7 @@ fun AbnormalityScreen(
                                                 dialogSelectedStatus = r.status
                                                 dialogMechanicName = r.mechanicName
                                                 dialogRepairNotes = r.repairNotes
+                                                dialogRepairPhotoUri = r.repairPhotoUri
                                                 reportToUpdateStatus = r
                                             },
                                             shape = RoundedCornerShape(8.dp),
@@ -9699,6 +10029,156 @@ fun AbnormalityScreen(
                                 )
                             )
                         }
+
+                        // Insert Foto pada Update Status Abnormality (ditempatkan dibawah kotak Catatan/Tindakan Perbaikan)
+                        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                            Text(
+                                text = "Insert Foto Hasil Tindakan Perbaikan (Opsional) :",
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Medium,
+                                color = SlateGrey
+                            )
+
+                            if (dialogRepairPhotoUri == null) {
+                                OutlinedButton(
+                                    onClick = {
+                                        isRepairPhotoTarget = true
+                                        showPhotoSourceDialog = true
+                                    },
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .height(44.dp),
+                                    shape = RoundedCornerShape(8.dp),
+                                    border = BorderStroke(1.dp, BrandGreen),
+                                    colors = ButtonDefaults.outlinedButtonColors(containerColor = Color(0xFFF0FDF4))
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.AddAPhoto,
+                                        contentDescription = "Insert Foto Perbaikan",
+                                        tint = BrandGreen,
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Text(
+                                        "Insert Foto Perbaikan (Maks 50 KB)",
+                                        fontSize = 11.5.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = BrandGreen
+                                    )
+                                }
+                            } else {
+                                Surface(
+                                    shape = RoundedCornerShape(10.dp),
+                                    color = Color(0xFFF8FAFC),
+                                    border = BorderStroke(1.dp, Color(0xFFE2E8F0)),
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    Column(
+                                        modifier = Modifier.padding(10.dp),
+                                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                                    ) {
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Box(
+                                                modifier = Modifier
+                                                    .size(54.dp)
+                                                    .clip(RoundedCornerShape(8.dp))
+                                                    .border(1.dp, BrandGreen, RoundedCornerShape(8.dp))
+                                                    .clickable { viewingPhotoUri = dialogRepairPhotoUri }
+                                            ) {
+                                                val repModel = ImageCompressor.getPhotoModel(dialogRepairPhotoUri)
+                                                if (repModel != null) {
+                                                    AsyncImage(
+                                                        model = repModel,
+                                                        contentDescription = "Foto Perbaikan",
+                                                        contentScale = ContentScale.Crop,
+                                                        modifier = Modifier.fillMaxSize()
+                                                    )
+                                                } else {
+                                                    Box(
+                                                        modifier = Modifier
+                                                            .fillMaxSize()
+                                                            .background(Color(0xFFE2E8F0)),
+                                                        contentAlignment = Alignment.Center
+                                                    ) {
+                                                        Icon(Icons.Default.BrokenImage, contentDescription = null, tint = Color.Gray)
+                                                    }
+                                                }
+                                            }
+
+                                            Spacer(modifier = Modifier.width(10.dp))
+
+                                            Column(modifier = Modifier.weight(1f)) {
+                                                Text(
+                                                    text = "Foto Tindakan Perbaikan",
+                                                    fontSize = 12.sp,
+                                                    fontWeight = FontWeight.Bold,
+                                                    color = SlateGrey
+                                                )
+                                                Text(
+                                                    text = "Ukuran: ${ImageCompressor.getFileSizeKb(dialogRepairPhotoUri)} (Terkonfirmasi <= 50 KB)",
+                                                    fontSize = 10.5.sp,
+                                                    color = Color(0xFF16A34A),
+                                                    fontWeight = FontWeight.Medium
+                                                )
+                                            }
+
+                                            FilledTonalButton(
+                                                onClick = { viewingPhotoUri = dialogRepairPhotoUri },
+                                                shape = RoundedCornerShape(6.dp),
+                                                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
+                                                modifier = Modifier.height(30.dp),
+                                                colors = ButtonDefaults.filledTonalButtonColors(containerColor = Color(0xFFE0F2FE))
+                                            ) {
+                                                Icon(Icons.Default.Visibility, contentDescription = null, tint = Color(0xFF0284C7), modifier = Modifier.size(14.dp))
+                                                Spacer(modifier = Modifier.width(4.dp))
+                                                Text("View", fontSize = 11.sp, color = Color(0xFF0284C7), fontWeight = FontWeight.Bold)
+                                            }
+                                        }
+
+                                        // Pilihan Upload Ulang dan Hapus Foto jika dirasa kurang bagus
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            horizontalArrangement = Arrangement.End,
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            OutlinedButton(
+                                                onClick = {
+                                                    isRepairPhotoTarget = true
+                                                    showPhotoSourceDialog = true
+                                                },
+                                                shape = RoundedCornerShape(6.dp),
+                                                border = BorderStroke(1.dp, Color(0xFF0284C7)),
+                                                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
+                                                modifier = Modifier.height(30.dp),
+                                                colors = ButtonDefaults.outlinedButtonColors(containerColor = Color(0xFFF0F9FF))
+                                            ) {
+                                                Icon(Icons.Default.Refresh, contentDescription = null, tint = Color(0xFF0284C7), modifier = Modifier.size(13.dp))
+                                                Spacer(modifier = Modifier.width(4.dp))
+                                                Text("Upload Ulang Foto", fontSize = 11.sp, color = Color(0xFF0284C7), fontWeight = FontWeight.SemiBold)
+                                            }
+
+                                            Spacer(modifier = Modifier.width(8.dp))
+
+                                            OutlinedButton(
+                                                onClick = { dialogRepairPhotoUri = null },
+                                                shape = RoundedCornerShape(6.dp),
+                                                border = BorderStroke(1.dp, BrandRed),
+                                                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
+                                                modifier = Modifier.height(30.dp),
+                                                colors = ButtonDefaults.outlinedButtonColors(containerColor = Color(0xFFFEF2F2))
+                                            ) {
+                                                Icon(Icons.Default.DeleteOutline, contentDescription = null, tint = BrandRed, modifier = Modifier.size(13.dp))
+                                                Spacer(modifier = Modifier.width(4.dp))
+                                                Text("Hapus", fontSize = 11.sp, color = BrandRed, fontWeight = FontWeight.SemiBold)
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
                     }
                 }
             },
@@ -9718,6 +10198,7 @@ fun AbnormalityScreen(
                             status = dialogSelectedStatus,
                             mechanicName = if (isDone) dialogMechanicName.trim() else "",
                             repairNotes = if (isDone) dialogRepairNotes.trim() else "",
+                            repairPhotoUri = if (isDone) dialogRepairPhotoUri else null,
                             resolvedTimestamp = resolvedTs,
                             isSynced = false
                         )
@@ -9743,6 +10224,212 @@ fun AbnormalityScreen(
             containerColor = Color.White,
             shape = RoundedCornerShape(16.dp)
         )
+    }
+
+    // Dialog Pilihan Sumber Foto (Kamera atau Galeri)
+    if (showPhotoSourceDialog && (targetItemForPhoto != null || isRepairPhotoTarget)) {
+        val currentPhotoPath = if (isRepairPhotoTarget) dialogRepairPhotoUri else targetItemForPhoto?.photoUri
+        val isReupload = !currentPhotoPath.isNullOrBlank()
+        AlertDialog(
+            onDismissRequest = {
+                showPhotoSourceDialog = false
+                isRepairPhotoTarget = false
+            },
+            icon = {
+                Icon(
+                    imageVector = if (isReupload) Icons.Default.Refresh else Icons.Default.AddAPhoto,
+                    contentDescription = null,
+                    tint = BrandGreen,
+                    modifier = Modifier.size(28.dp)
+                )
+            },
+            title = {
+                Text(
+                    text = if (isRepairPhotoTarget) {
+                        if (isReupload) "Upload Ulang Foto Tindakan Perbaikan" else "Insert Foto Tindakan Perbaikan"
+                    } else {
+                        if (isReupload) "Upload Ulang Foto Abnormality" else "Insert Foto Abnormality"
+                    },
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 15.sp,
+                    color = SlateGrey
+                )
+            },
+            text = {
+                Column(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    val compTitle = if (isRepairPhotoTarget) {
+                        "Tindakan Perbaikan (${reportToUpdateStatus?.title ?: "Abnormality"})"
+                    } else {
+                        targetItemForPhoto?.component.orEmpty().ifBlank { "Komponen Baris ${targetItemForPhoto?.no}" }
+                    }
+                    Text(
+                        text = "Target: $compTitle\nFoto akan otomatis dikompres hingga maksimal 50 KB.",
+                        fontSize = 12.sp,
+                        color = Color(0xFF475569)
+                    )
+
+                    if (isReupload) {
+                        Text(
+                            text = "Foto sebelumnya (${ImageCompressor.getFileSizeKb(currentPhotoPath)}) akan diganti dengan foto baru.",
+                            fontSize = 11.5.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = Color(0xFF0284C7)
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.height(4.dp))
+
+                    // Opsi Kamera
+                    OutlinedButton(
+                        onClick = {
+                            showPhotoSourceDialog = false
+                            val tempUri = ImageCompressor.createCameraTempUri(context)
+                            cameraTempUri = tempUri
+                            takePhotoLauncher.launch(tempUri)
+                        },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(44.dp),
+                        shape = RoundedCornerShape(8.dp),
+                        border = BorderStroke(1.dp, BrandGreen),
+                        colors = ButtonDefaults.outlinedButtonColors(containerColor = Color(0xFFF0FDF4))
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.CameraAlt,
+                            contentDescription = "Ambil dari Kamera",
+                            tint = BrandGreen,
+                            modifier = Modifier.size(18.dp)
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text("Ambil Foto dari Kamera", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = BrandGreen)
+                    }
+
+                    // Opsi Galeri
+                    OutlinedButton(
+                        onClick = {
+                            showPhotoSourceDialog = false
+                            pickPhotoLauncher.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
+                        },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(44.dp),
+                        shape = RoundedCornerShape(8.dp),
+                        border = BorderStroke(1.dp, Color(0xFF0284C7)),
+                        colors = ButtonDefaults.outlinedButtonColors(containerColor = Color(0xFFF0F9FF))
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.PhotoLibrary,
+                            contentDescription = "Pilih dari Galeri",
+                            tint = Color(0xFF0284C7),
+                            modifier = Modifier.size(18.dp)
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text("Pilih Foto dari Galeri", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color(0xFF0284C7))
+                    }
+                }
+            },
+            confirmButton = {},
+            dismissButton = {
+                TextButton(onClick = {
+                    showPhotoSourceDialog = false
+                    isRepairPhotoTarget = false
+                }) {
+                    Text("Batal", color = Color.Gray, fontSize = 12.sp)
+                }
+            },
+            containerColor = Color.White,
+            shape = RoundedCornerShape(16.dp)
+        )
+    }
+
+    // Dialog View / Pratinjau Foto Abnormality Ukuran Penuh
+    if (viewingPhotoUri != null) {
+        Dialog(
+            onDismissRequest = { viewingPhotoUri = null },
+            properties = DialogProperties(usePlatformDefaultWidth = false)
+        ) {
+            Surface(
+                modifier = Modifier
+                    .fillMaxWidth(0.92f)
+                    .clip(RoundedCornerShape(16.dp)),
+                color = Color.White,
+                shadowElevation = 8.dp
+            ) {
+                Column(
+                    modifier = Modifier.padding(16.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column {
+                            Text(
+                                text = "Pratinjau Foto Abnormality",
+                                fontSize = 15.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = SlateGrey
+                            )
+                            Text(
+                                text = "Ukuran File: ${ImageCompressor.getFileSizeKb(viewingPhotoUri)} (Terkonfirmasi <= 50 KB)",
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Medium,
+                                color = Color(0xFF16A34A)
+                            )
+                        }
+                        IconButton(
+                            onClick = { viewingPhotoUri = null },
+                            modifier = Modifier.size(28.dp)
+                        ) {
+                            Icon(Icons.Default.Close, contentDescription = "Tutup", tint = SlateGrey)
+                        }
+                    }
+
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .heightIn(min = 200.dp, max = 380.dp)
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(Color(0xFF0F172A)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        val photoModel = ImageCompressor.getPhotoModel(viewingPhotoUri)
+                        if (photoModel != null) {
+                            AsyncImage(
+                                model = photoModel,
+                                contentDescription = "Foto Abnormality Penuh",
+                                contentScale = ContentScale.Fit,
+                                modifier = Modifier.fillMaxSize()
+                            )
+                        } else {
+                            Text(
+                                text = "File foto tidak ditemukan atau sedang disinkronisasi",
+                                fontSize = 12.sp,
+                                color = Color.White
+                            )
+                        }
+                    }
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.End
+                    ) {
+                        Button(
+                            onClick = { viewingPhotoUri = null },
+                            colors = ButtonDefaults.buttonColors(containerColor = BrandGreen),
+                            shape = RoundedCornerShape(8.dp)
+                        ) {
+                            Text("Tutup", fontWeight = FontWeight.Bold, color = Color.White)
+                        }
+                    }
+                }
+            }
+        }
     }
 }
 }

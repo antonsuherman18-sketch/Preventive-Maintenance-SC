@@ -32,7 +32,7 @@ class MainActivity : ComponentActivity() {
 
         // Initialize Room Database and Repository
         val database = AppDatabase.getDatabase(applicationContext)
-        val repository = Repository(database)
+        val repository = Repository(database, applicationContext)
 
         // Instantiate ViewModel with factory
         val viewModel: CentrifugeViewModel by viewModels {

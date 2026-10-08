@@ -98,6 +98,7 @@ data class AbnormalityReport(
     val status: String = "Open", // "Open" (default pertama kali muncul = belum diselesaikan) atau "Done"
     val mechanicName: String = "", // Nama Mekanik yang melakukan perbaikan
     val repairNotes: String = "", // Catatan perbaikan jika ada
+    val repairPhotoUri: String? = null, // Foto hasil tindakan perbaikan (compressed <= 50KB)
     val resolvedTimestamp: Long = 0L, // Timestamp saat status ditandai Done
     val isSynced: Boolean = false
 )
